@@ -4,9 +4,10 @@ This repository contains the reproducible code package for the Active Reasoning
 final patient setting used in the MDD active inquiry experiments.
 
 The public package focuses on method code, patient simulator control logic,
-closed-source doctor evaluation utilities, training-data builders, and safe
-schema examples. Raw patient profiles, closed-source API keys, model checkpoints,
-logs, and generated experiment outputs are not included.
+closed-source doctor evaluation utilities, training-data builders, and the
+public MDD-derived data artifacts needed to reproduce the environment.
+Closed-source API keys, model checkpoints, logs, and generated experiment
+outputs are not included.
 
 ## What Is Included
 
@@ -52,9 +53,10 @@ repair-loop design.
 
 ## Data Policy
 
-The raw MDD-derived patient profiles and interview/evidence records are not
-stored in this repository. This repo ships only schema-level examples under
-`examples/`. Use controlled storage for raw profiles and generated full records.
+The public MDD-derived patient profiles, canonical evidence files, and F32/F41
+profile splits are stored under `data/`. Large JSONL files are tracked with Git
+LFS. Generated model outputs, logs, checkpoints, and closed-source API traces are
+not part of the release package.
 
 See `docs/dataset_card.md` for the expected JSONL schemas and release policy.
 
@@ -81,4 +83,4 @@ external `.env` file or environment variables. Do not commit keys.
 
 The `.gitignore` excludes generated outputs, logs, checkpoints, local notes,
 paper PDFs/text extracts, presentations, and credentials. Before publishing,
-run a secret scan and review `git status --ignored`.
+run a secret scan, confirm Git LFS is enabled, and review `git status --ignored`.

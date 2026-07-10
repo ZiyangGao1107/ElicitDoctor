@@ -1,0 +1,36 @@
+{
+  "num_profiles": 744,
+  "tree_type_counts": {
+    "female_adult": 545,
+    "female_teen": 175,
+    "male_adult": 24
+  },
+  "avg_observed_slots_per_profile": 17.69,
+  "avg_mapped_turns_per_profile": 93.43,
+  "avg_dialogue_variants_per_profile": 5.0,
+  "avg_empty_active_slots_per_profile": 0.64,
+  "slot_case_coverage": {
+    "hopelessness_or_crying": 744,
+    "sleep": 742,
+    "personality": 741,
+    "dizziness_or_headache": 737,
+    "attention_decline": 737,
+    "family_psychiatric_history": 735,
+    "palpitation": 734,
+    "hallucination": 733,
+    "romantic_status": 733,
+    "appetite_loss": 732,
+    "chest_tightness": 731,
+    "memory_problem": 729,
+    "cognitive_slowing": 715,
+    "suicide_or_self_harm": 709,
+    "mania_screen": 700,
+    "binge_eating": 616,
+    "work_status": 616,
+    "menstrual_status": 602,
+    "parent_awareness": 197,
+    "school_or_study_status": 180
+  },
+  "profile_type": "dialogue_derived_not_original_clinical_case_profile",
+  "slot_assignment_policy": "primary_only"
+}

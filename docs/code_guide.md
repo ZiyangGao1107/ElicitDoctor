@@ -16,7 +16,7 @@ The final setting has four layers:
 The intended flow is:
 
 ```text
-patient profile + canonical evidence
+public patient profile + canonical evidence
   -> PCV3.2 controller
   -> patient-realizer request JSONL
   -> Qwen3-8B patient response
@@ -272,16 +272,26 @@ Common output files:
 
 See `examples/` for safe synthetic schemas.
 
+## Included Data
+
+The public data artifacts needed by the controller and canonical evaluator are
+included under `data/`:
+
+- `data/patient_profiles/`
+- `data/tree_aligned_canonical_evidence/`
+- `data/f32_f41_profile_split/`
+
+Large JSONL files are tracked with Git LFS.
+
 ## What Is Not Included
 
 This repository intentionally excludes:
 
-- raw patient profiles
 - full generated dialogues
 - paper PDFs or extracted paper text
 - API credentials
 - logs and generated output directories
 - checkpoints and LoRA adapters
 
-The method code is public-release ready, but raw data release requires a separate
-privacy and licensing decision.
+Generated records and model artifacts should be released separately only when
+their size, license, and reproducibility purpose are clear.
