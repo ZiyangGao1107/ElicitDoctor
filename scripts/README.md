@@ -1,91 +1,73 @@
 # Script Index
 
-This directory contains the implementation scripts for the final-patient active
-inquiry pipeline. Time-stamped shell scripts are experiment runners; Python files
-hold the reusable logic.
+This directory exposes one maintained final-patient pipeline. Files with a
+leading underscore are internal helpers used by the public entry points.
 
-## Final Patient Simulator
-
-| Script | Purpose |
-|---|---|
-| `build_dynamic_patient_controller_v3_2.py` | Final PCV3.2 controller with cross-turn disclosure state. |
-| `build_dynamic_patient_controller_v3_1.py` | Previous severe/avoidance policy utilities reused by V3.2. |
-| `build_dynamic_patient_controller_v3.py` | Trust/readiness state utilities. |
-| `build_dynamic_patient_controller_v2.py` | Earlier controller with retention/weakening logic. |
-| `build_dynamic_patient_controller_v1.py` | Base profile/evidence loading and controller helpers. |
-| `map_mdd5k_question_slots.py` | Maps doctor questions to symptom/evidence slots. |
-| `online_query_interpreter.py` | Online query interpretation helpers. |
-
-## LLM Patient Realizer
+## Patient Simulator
 
 | Script | Purpose |
 |---|---|
-| `prepare_llm_patient_realizer_requests_v2.py` | Builds structured realizer requests from controller outputs. |
-| `prepare_llm_patient_realizer_requests_v1.py` | Earlier request builder and JSONL helpers. |
+| `patient_controller.py` | Final PCV3.2 controller with cross-turn disclosure state. |
+| `prepare_patient_realizer_requests.py` | Builds structured LLM patient-realizer requests. |
 | `call_qwen3_hf_for_patient_realizer.py` | Runs the Qwen3-8B patient realizer. |
-| `call_closed_llm_for_patient_realizer.py` | Optional closed-source patient realizer caller for audits. |
-
-## Verification, Repair, and Cache
-
-| Script | Purpose |
-|---|---|
-| `verify_llm_patient_realizer_outputs_v1.py` | Hard verifier for grounding, leakage, response validity, and severity policy. |
-| `prepare_llm_patient_realizer_repair_requests_v1.py` | Builds repair requests from verifier failures. |
-| `build_verified_patient_realizer_cache_v1.py` | Builds a verified cache from one verifier pass. |
-| `build_verified_patient_realizer_cache_with_repair_v1.py` | Builds final cache from primary plus repaired outputs. |
-| `merge_patient_realizer_caches_v1.py` | Merges cache shards or cache versions. |
-| `filter_patient_realizer_requests_by_cache_v1.py` | Filters already cached requests. |
-| `build_final_patient_freeze_report_v1.py` | Checks whether the final patient setting passes freeze criteria. |
+| `verify_patient_realizer_outputs.py` | Hard verifier for grounding, leakage, response validity, and severity policy. |
+| `prepare_patient_realizer_repair_requests.py` | Builds verifier-guided repair requests. |
+| `build_verified_patient_realizer_cache.py` | Builds the final verified patient-response cache. |
+| `run_final_patient_realizer_build_cache.sh` | End-to-end realizer, verifier, repair, and cache runner. |
 
 ## Rubric Judge
 
 | Script | Purpose |
 |---|---|
-| `prepare_llm_patient_realizer_rubric_judge_requests_v2.py` | Builds final rubric judge requests. |
-| `prepare_llm_patient_realizer_rubric_judge_requests_v1.py` | Earlier rubric request builder. |
-| `summarize_patient_realizer_rubric_judge_outputs_v1.py` | Summarizes rubric judge outputs. |
-| `prepare_and_merge_rubric_shards_v1.py` | Splits and merges large rubric runs. |
-| `run_patient_realizer_rubric_sharded_accel_20260709.sh` | Sharded closed-source rubric runner. |
+| `prepare_patient_realizer_rubric_requests.py` | Builds patient-simulation rubric judge requests. |
+| `run_patient_realizer_rubric_sharded.sh` | Runs closed-source rubric judge calls in shards. |
+| `prepare_and_merge_rubric_shards.py` | Splits and merges rubric request shards. |
+| `summarize_patient_realizer_rubric_outputs.py` | Summarizes rubric judge scores. |
 
-## Online Doctor Evaluation
+## Doctor Evaluation
 
 | Script | Purpose |
 |---|---|
-| `run_llm_doctor_online_replay_v1.py` | Online replay engine for doctor-patient turns. |
-| `run_pcv32_online_final_patient_doctor_eval_one_20260709.sh` | One-model final-patient doctor evaluation runner. |
-| `run_pcv32_online_final_patient_doctor_eval_suite_20260709.sh` | Multi-model final-patient baseline suite runner. |
+| `run_llm_doctor_online_replay.py` | Online replay engine for doctor-patient turns. |
+| `run_final_patient_doctor_eval_one.sh` | One-model final-patient doctor evaluation runner. |
+| `run_final_patient_doctor_eval_suite.sh` | Multi-model final-patient baseline suite runner. |
 | `call_closed_llm_for_pending_requests.py` | Closed-source doctor API caller. |
 | `call_qwen3_hf_lora_for_pending_requests.py` | Qwen base/LoRA doctor generator. |
 | `analyze_tree_aligned_canonical_evidence_recovery.py` | Canonical evidence recovery analyzer. |
-| `summarize_final_patient_baseline_suite_v1.py` | Summarizes baseline suite metrics. |
+| `summarize_final_patient_baseline_suite.py` | Summarizes baseline suite metrics. |
 
 ## Data Builders and Training
 
 | Script | Purpose |
 |---|---|
-| `build_final_patient_sft_from_online_records_v1.py` | Builds SFT examples from verified online records. |
-| `build_final_patient_state_bank_from_online_records_v1.py` | Extracts reusable states from online records. |
-| `build_final_patient_candidate_rule_rollout_from_state_bank_v1.py` | Builds candidate rollouts from sampled states. |
-| `apply_verified_patient_cache_to_candidate_rollout_v1.py` | Replaces branch patient responses with verified cache rows. |
-| `build_final_patient_grpo_groups_from_candidate_rollout_v1.py` | Builds same-state GRPO candidate groups. |
-| `build_final_patient_rfv_data_from_online_records_v1.py` | Builds residual future-value training data. |
-| `train_final_patient_rfv_value_model_numpy_v1.py` | Lightweight RFV value model trainer. |
+| `build_final_patient_sft_from_online_records.py` | Builds SFT examples from verified online records. |
+| `build_final_patient_state_bank_from_online_records.py` | Extracts reusable same-state doctor contexts. |
+| `build_final_patient_candidate_rollout.py` | Builds candidate rollouts from sampled states. |
+| `apply_verified_patient_cache_to_candidate_rollout.py` | Applies verified patient cache rows to candidate branches. |
+| `build_final_patient_grpo_groups.py` | Builds same-state GRPO candidate groups. |
+| `build_final_patient_rfv_data.py` | Builds residual future-value training data. |
+| `train_final_patient_rfv_value_model.py` | Lightweight RFV value model trainer. |
 | `train_qwen3_doctor_sft_lora.py` | Qwen doctor SFT LoRA trainer. |
 | `train_qwen3_grpo_from_v6_groups.py` | Qwen doctor GRPO trainer. |
-| `run_a100_qwen3_final_patient_sft_lora_20260709.sh` | SFT shell runner. |
-| `run_a100_qwen3_final_patient_grpo_from_groups_20260709.sh` | GRPO shell runner. |
+| `run_final_patient_sft_lora.sh` | SFT shell runner. |
+| `run_final_patient_grpo_from_groups.sh` | GRPO shell runner. |
 
-## Legacy or Smoke Runners
+## Internal Helpers
 
 | Script | Purpose |
 |---|---|
-| `run_pcv32_full_patient_realizer_hardened_repair_20260708.sh` | Full patient-realizer verification and repair pipeline. |
-| `run_pcv32_final_patient_rollout_smoke_20260708.sh` | Small final-patient rollout smoke test. |
-| `run_pcv32_qwen_realizer_v2_severe_smoke.sh` | Severe-policy smoke test. |
-| `run_patient_realizer_rubric_v3_2_final_verified_full_eval_20260708.sh` | Full rubric runner. |
-| `run_patient_realizer_rubric_v3_2_qwenrealizer_verified_sample_eval.sh` | Sample rubric runner. |
-| `wait_closed_rubric_then_online_baseline_20260709.sh` | Watcher that starts baseline after freeze. |
-| `manual_finalize_pcv32_closed_baseline.sh` | Manual baseline finalization helper. |
+| `_patient_controller_base.py` | Profile/evidence loading and base controller utilities. |
+| `_patient_controller_disclosure.py` | Disclosure-budget helper logic. |
+| `_patient_controller_state.py` | Trust/readiness state helper logic. |
+| `_patient_controller_policy.py` | Severe/avoidance helper logic. |
+| `_profile_grounded_controller.py` | Profile-grounded environment helper functions. |
+| `_patient_realizer_io.py` | JSONL and evidence-unit helpers for realizer scripts. |
+| `_doctor_request_prompts.py` | Doctor request prompt construction. |
+| `_doctor_policy_baselines.py` | Doctor-policy baseline helper functions. |
+| `map_mdd5k_question_slots.py` | Doctor-question to slot mapping. |
+| `online_query_interpreter.py` | Online query interpretation helpers. |
+| `filter_patient_realizer_requests_by_cache.py` | Cache-aware request filtering. |
+| `merge_patient_realizer_caches.py` | Verified-cache merge helper. |
 
 ## Running Assumptions
 
@@ -98,5 +80,5 @@ Most shell scripts can be redirected to another machine by setting:
 - `MODEL_PATH`
 - `CLOSED_ENV_FILE`
 
-The repository does not include raw data, API keys, checkpoints, or generated
+The repository does not include API keys, checkpoints, logs, or generated
 experiment outputs.

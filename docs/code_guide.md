@@ -35,10 +35,10 @@ only a debugging or probe mechanism.
 
 Read these first:
 
-- `scripts/build_dynamic_patient_controller_v3_2.py`
-- `scripts/prepare_llm_patient_realizer_requests_v2.py`
-- `scripts/verify_llm_patient_realizer_outputs_v1.py`
-- `scripts/run_pcv32_online_final_patient_doctor_eval_one_20260709.sh`
+- `scripts/patient_controller.py`
+- `scripts/prepare_patient_realizer_requests.py`
+- `scripts/verify_patient_realizer_outputs.py`
+- `scripts/run_final_patient_doctor_eval_one.sh`
 - `scripts/call_closed_llm_for_pending_requests.py`
 
 These files define the frozen patient simulator, the LLM-realizer interface, the
@@ -48,11 +48,11 @@ hard verifier, one-model online evaluation, and closed-source doctor calling.
 
 Main files:
 
-- `scripts/build_dynamic_patient_controller_v1.py`
-- `scripts/build_dynamic_patient_controller_v2.py`
-- `scripts/build_dynamic_patient_controller_v3.py`
-- `scripts/build_dynamic_patient_controller_v3_1.py`
-- `scripts/build_dynamic_patient_controller_v3_2.py`
+- `scripts/_patient_controller_base.py`
+- `scripts/_patient_controller_disclosure.py`
+- `scripts/_patient_controller_state.py`
+- `scripts/_patient_controller_policy.py`
+- `scripts/patient_controller.py`
 - `scripts/map_mdd5k_question_slots.py`
 - `scripts/online_query_interpreter.py`
 
@@ -87,8 +87,8 @@ Severity controls how quickly the patient opens up:
 
 Main files:
 
-- `scripts/prepare_llm_patient_realizer_requests_v1.py`
-- `scripts/prepare_llm_patient_realizer_requests_v2.py`
+- `scripts/_patient_realizer_io.py`
+- `scripts/prepare_patient_realizer_requests.py`
 - `scripts/call_qwen3_hf_for_patient_realizer.py`
 - `scripts/call_closed_llm_for_patient_realizer.py`
 
@@ -112,12 +112,11 @@ patient-realizer comparison or auditing, but the frozen setting uses Qwen3-8B.
 
 Main files:
 
-- `scripts/verify_llm_patient_realizer_outputs_v1.py`
-- `scripts/prepare_llm_patient_realizer_repair_requests_v1.py`
-- `scripts/build_verified_patient_realizer_cache_v1.py`
-- `scripts/build_verified_patient_realizer_cache_with_repair_v1.py`
-- `scripts/merge_patient_realizer_caches_v1.py`
-- `scripts/filter_patient_realizer_requests_by_cache_v1.py`
+- `scripts/verify_patient_realizer_outputs.py`
+- `scripts/prepare_patient_realizer_repair_requests.py`
+- `scripts/build_verified_patient_realizer_cache.py`
+- `scripts/merge_patient_realizer_caches.py`
+- `scripts/filter_patient_realizer_requests_by_cache.py`
 
 The verifier is a hard gate. It checks:
 
@@ -140,11 +139,10 @@ cache. Final evaluation/training should only consume records with:
 
 Main files:
 
-- `scripts/prepare_llm_patient_realizer_rubric_judge_requests_v1.py`
-- `scripts/prepare_llm_patient_realizer_rubric_judge_requests_v2.py`
-- `scripts/summarize_patient_realizer_rubric_judge_outputs_v1.py`
-- `scripts/prepare_and_merge_rubric_shards_v1.py`
-- `scripts/run_patient_realizer_rubric_sharded_accel_20260709.sh`
+- `scripts/prepare_patient_realizer_rubric_requests.py`
+- `scripts/summarize_patient_realizer_rubric_outputs.py`
+- `scripts/prepare_and_merge_rubric_shards.py`
+- `scripts/run_patient_realizer_rubric_sharded.sh`
 
 The verifier is not a quality score. The rubric judge evaluates whether the
 patient simulator behaves like a plausible controlled patient simulation.
@@ -164,13 +162,13 @@ closed-source judge model.
 
 Main files:
 
-- `scripts/run_llm_doctor_online_replay_v1.py`
-- `scripts/run_pcv32_online_final_patient_doctor_eval_one_20260709.sh`
-- `scripts/run_pcv32_online_final_patient_doctor_eval_suite_20260709.sh`
+- `scripts/run_llm_doctor_online_replay.py`
+- `scripts/run_final_patient_doctor_eval_one.sh`
+- `scripts/run_final_patient_doctor_eval_suite.sh`
 - `scripts/call_closed_llm_for_pending_requests.py`
 - `scripts/call_qwen3_hf_lora_for_pending_requests.py`
 - `scripts/analyze_tree_aligned_canonical_evidence_recovery.py`
-- `scripts/summarize_final_patient_baseline_suite_v1.py`
+- `scripts/summarize_final_patient_baseline_suite.py`
 
 Online doctor replay alternates between doctor questions and verified patient
 responses. The patient simulator must stay fixed across all doctor models.
@@ -212,13 +210,13 @@ The repository does not include keys.
 
 Main files:
 
-- `scripts/build_final_patient_sft_from_online_records_v1.py`
-- `scripts/build_final_patient_state_bank_from_online_records_v1.py`
-- `scripts/build_final_patient_candidate_rule_rollout_from_state_bank_v1.py`
-- `scripts/apply_verified_patient_cache_to_candidate_rollout_v1.py`
-- `scripts/build_final_patient_grpo_groups_from_candidate_rollout_v1.py`
-- `scripts/build_final_patient_rfv_data_from_online_records_v1.py`
-- `scripts/train_final_patient_rfv_value_model_numpy_v1.py`
+- `scripts/build_final_patient_sft_from_online_records.py`
+- `scripts/build_final_patient_state_bank_from_online_records.py`
+- `scripts/build_final_patient_candidate_rollout.py`
+- `scripts/apply_verified_patient_cache_to_candidate_rollout.py`
+- `scripts/build_final_patient_grpo_groups.py`
+- `scripts/build_final_patient_rfv_data.py`
+- `scripts/train_final_patient_rfv_value_model.py`
 
 These scripts rebuild training data under the final patient setting.
 
@@ -241,8 +239,8 @@ verified online records
 
 Main files:
 
-- `scripts/run_a100_qwen3_final_patient_sft_lora_20260709.sh`
-- `scripts/run_a100_qwen3_final_patient_grpo_from_groups_20260709.sh`
+- `scripts/run_final_patient_sft_lora.sh`
+- `scripts/run_final_patient_grpo_from_groups.sh`
 - `scripts/train_qwen3_doctor_sft_lora.py`
 - `scripts/train_qwen3_grpo_from_v6_groups.py`
 

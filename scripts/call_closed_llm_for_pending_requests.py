@@ -13,10 +13,10 @@ import httpx
 BASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_PENDING_PATH = (
     BASE_DIR
-    / "outputs_real_llm_doctor_cache_v1"
+    / "outputs_closed_llm_doctor_cache"
     / "mdd5k_llm_doctor_online_replay_pending_requests.jsonl"
 )
-DEFAULT_OUTPUT_PATH = BASE_DIR / "outputs_real_llm_doctor_cache_v1" / "llm_outputs.jsonl"
+DEFAULT_OUTPUT_PATH = BASE_DIR / "outputs_closed_llm_doctor_cache" / "llm_outputs.jsonl"
 DEFAULT_AGENTMEMORY_ENV = Path(os.environ.get("ACTIVE_REASONING_ENV_FILE", ".env"))
 DEFAULT_OPENAI_COMPATIBLE_BASE_URL = os.environ.get(
     "OPENAI_COMPATIBLE_BASE_URL",

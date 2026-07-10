@@ -16,10 +16,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingA
 BASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL_PATH = Path(os.environ.get("MODEL_PATH", BASE_DIR / "cache" / "qwen3-8b-hf-remote-code"))
 DEFAULT_TRAIN_PATH = (
-    BASE_DIR / "outputs_doctor_sft_bc_f32_f41_v1" / "mdd5k_doctor_generation_sft_train.jsonl"
+    BASE_DIR / "outputs_doctor_sft_bc_f32_f41" / "mdd5k_doctor_generation_sft_train.jsonl"
 )
-DEFAULT_DEV_PATH = BASE_DIR / "outputs_doctor_sft_bc_f32_f41_v1" / "mdd5k_doctor_generation_sft_dev.jsonl"
-DEFAULT_OUTPUT_DIR = BASE_DIR / "outputs_qwen3_doctor_sft_lora_f32_f41_v1"
+DEFAULT_DEV_PATH = BASE_DIR / "outputs_doctor_sft_bc_f32_f41" / "mdd5k_doctor_generation_sft_dev.jsonl"
+DEFAULT_OUTPUT_DIR = BASE_DIR / "outputs_qwen3_doctor_sft_lora_f32_f41"
 
 
 def iter_jsonl(path: Path, max_samples: int | None = None):

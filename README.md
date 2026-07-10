@@ -14,26 +14,26 @@ outputs are not included.
 Start with `docs/code_guide.md` for a stage-by-stage explanation of the code.
 The short script index is in `scripts/README.md`.
 
-- `scripts/build_dynamic_patient_controller_v3_2.py`: PCV3.2 patient controller
+- `scripts/patient_controller.py`: PCV3.2 patient controller
   with cross-turn disclosure state.
-- `scripts/prepare_llm_patient_realizer_requests_v2.py`: converts controller
+- `scripts/prepare_patient_realizer_requests.py`: converts controller
   decisions into LLM patient-realizer requests.
-- `scripts/verify_llm_patient_realizer_outputs_v1.py`: verifier for grounding,
+- `scripts/verify_patient_realizer_outputs.py`: verifier for grounding,
   forbidden-evidence leakage, and response validity.
-- `scripts/prepare_llm_patient_realizer_repair_requests_v1.py`: repair-loop
+- `scripts/prepare_patient_realizer_repair_requests.py`: repair-loop
   request builder for failed realizer outputs.
-- `scripts/build_verified_patient_realizer_cache_with_repair_v1.py`: merges
+- `scripts/build_verified_patient_realizer_cache.py`: merges
   primary and repaired outputs into a verified cache.
-- `scripts/run_pcv32_online_final_patient_doctor_eval_one_20260709.sh`: one-model
+- `scripts/run_final_patient_doctor_eval_one.sh`: one-model
   online doctor evaluation driver under the final patient setting.
 - `scripts/call_closed_llm_for_pending_requests.py`: closed-source LLM doctor API
   caller for OpenAI-compatible, OpenAI Responses, Anthropic, and Gemini-style
   providers.
-- `scripts/build_final_patient_sft_from_online_records_v1.py`: SFT data builder
+- `scripts/build_final_patient_sft_from_online_records.py`: SFT data builder
   from verified final-patient online records.
-- `scripts/build_final_patient_rfv_data_from_online_records_v1.py`: residual
+- `scripts/build_final_patient_rfv_data.py`: residual
   future-value data builder.
-- `scripts/build_final_patient_grpo_groups_from_candidate_rollout_v1.py`: GRPO
+- `scripts/build_final_patient_grpo_groups.py`: GRPO
   group builder from same-state candidate rollouts.
 
 ## Final Patient Setting

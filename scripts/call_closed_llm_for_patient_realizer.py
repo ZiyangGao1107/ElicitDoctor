@@ -17,7 +17,7 @@ from call_closed_llm_for_pending_requests import (
     resolve_api_keys,
     resolve_base_url,
 )
-from prepare_llm_patient_realizer_requests_v1 import iter_jsonl
+from _patient_realizer_io import iter_jsonl
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]

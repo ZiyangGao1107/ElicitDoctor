@@ -43,14 +43,14 @@ Do not commit `.env` files or printed API responses containing secrets.
   doctor caller.
 - `scripts/call_closed_llm_for_patient_realizer.py`: closed-source patient
   realizer helper, used mainly for comparison or auditing.
-- `scripts/run_pcv32_online_final_patient_doctor_eval_one_20260709.sh`: one
+- `scripts/run_final_patient_doctor_eval_one.sh`: one
   model online final-patient evaluation driver.
-- `scripts/run_pcv32_online_final_patient_doctor_eval_suite_20260709.sh`: suite
+- `scripts/run_final_patient_doctor_eval_suite.sh`: suite
   runner for multiple baselines.
-- `scripts/summarize_final_patient_baseline_suite_v1.py`: suite summary builder.
+- `scripts/summarize_final_patient_baseline_suite.py`: suite summary builder.
 
 ## Caution
 
-`run_pcv32_online_final_patient_doctor_eval_one_20260709.sh` recreates its output
+`run_final_patient_doctor_eval_one.sh` recreates its output
 directory at startup. Do not restart a running model output directory unless the
 recovery plan explicitly preserves existing records.
