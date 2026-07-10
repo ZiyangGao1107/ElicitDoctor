@@ -1,0 +1,50 @@
+# Codex and local generated artifacts
+.codex_tmp/
+outputs/
+outputs_*/
+work/
+presentations/generated/
+
+# Python/runtime caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node/runtime caches and build output
+node_modules/
+dist/
+build/
+.next/
+
+# Local logs and temporary files
+*.log
+*.tmp
+*.bak
+tmp_*.txt
+
+# Secrets and local credentials
+.env
+.env.*
+*.key
+*.pem
+*.p12
+
+# Model artifacts and large generated assets
+checkpoint-*/
+**/checkpoint-*/
+final_lora_adapter/
+**/final_lora_adapter/
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# Non-release local research material
+notes/
+presentations/
+references/papers/
+
+# Local transfer helpers with machine-specific paths
+scripts/qwen3_hf_transfer_job.py

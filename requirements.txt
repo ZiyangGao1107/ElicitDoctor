@@ -1,0 +1,7 @@
+httpx
+numpy
+openai
+anthropic
+google-genai
+huggingface-hub
+tqdm
