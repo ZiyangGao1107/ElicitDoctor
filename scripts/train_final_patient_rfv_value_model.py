@@ -48,13 +48,23 @@ def safe_float(value: Any, default: float = 0.0) -> float:
 def residual_future_target(
     record: dict[str, Any],
     *,
+    target_mode: str,
     any_gain_weight: float,
     boundary_penalty: float,
     deflection_penalty: float,
     vague_penalty: float,
     unmapped_penalty: float,
 ) -> float:
-    target = safe_float(record.get("future_target_gain"))
+    immediate = safe_float(record.get("immediate_target_gain"))
+    residual = safe_float(record.get("future_target_gain"))
+    if target_mode == "residual_future":
+        target = residual
+    elif target_mode == "action_value_total":
+        target = safe_float(record.get("action_value_total_gain"), immediate + residual)
+    elif target_mode == "immediate_only":
+        target = immediate
+    else:
+        raise ValueError(f"Unsupported target_mode={target_mode!r}")
     target += any_gain_weight * safe_float(record.get("future_any_gain"))
     for future in record.get("future_records") or []:
         response_type = str(future.get("response_type") or "")
@@ -92,6 +102,7 @@ def row_text(record: dict[str, Any]) -> str:
 def load_rows(
     path: Path,
     *,
+    target_mode: str,
     any_gain_weight: float,
     boundary_penalty: float,
     deflection_penalty: float,
@@ -105,6 +116,7 @@ def load_rows(
             continue
         target = residual_future_target(
             record,
+            target_mode=target_mode,
             any_gain_weight=any_gain_weight,
             boundary_penalty=boundary_penalty,
             deflection_penalty=deflection_penalty,
@@ -222,7 +234,17 @@ def pair_metrics(rows: list[dict[str, Any]], preds: np.ndarray, min_margin: floa
     total = 0
     correct = 0
     ties = 0
+    top1_total = 0
+    top1_correct = 0
+    regrets: list[float] = []
     for values in by_state.values():
+        if len(values) >= 2:
+            top1_total += 1
+            true_best = max(values, key=lambda item: float(item[0]["target"]))
+            pred_best = max(values, key=lambda item: item[1])
+            if pred_best[0].get("record_id") == true_best[0].get("record_id"):
+                top1_correct += 1
+            regrets.append(max(0.0, float(true_best[0]["target"]) - float(pred_best[0]["target"])))
         ordered = sorted(values, key=lambda item: float(item[0]["target"]), reverse=True)
         for i, (chosen, chosen_pred) in enumerate(ordered):
             for rejected, rejected_pred in ordered[i + 1 :]:
@@ -239,7 +261,108 @@ def pair_metrics(rows: list[dict[str, Any]], preds: np.ndarray, min_margin: floa
         "num_eval_pairs": total,
         "pair_accuracy": round(correct / total, 6) if total else 0.0,
         "tie_rate": round(ties / total, 6) if total else 0.0,
+        "top1_accuracy": round(top1_correct / top1_total, 6) if top1_total else 0.0,
+        "mean_oracle_regret": round(sum(regrets) / len(regrets), 6) if regrets else 0.0,
         "min_target_margin": min_margin,
+    }
+
+
+def group_rows_by_state(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        grouped[str(row["state_id"])].append(row)
+    return grouped
+
+
+def apply_feature_update(
+    weights: np.ndarray,
+    features: dict[int, float],
+    *,
+    learning_rate: float,
+    l2: float,
+    grad_scale: float,
+) -> None:
+    if not features:
+        return
+    for idx, value in features.items():
+        weights[idx] -= learning_rate * (grad_scale * value + l2 * float(weights[idx]))
+
+
+def feature_difference(
+    good_features: dict[int, float],
+    bad_features: dict[int, float],
+) -> dict[int, float]:
+    diff: defaultdict[int, float] = defaultdict(float)
+    for idx, value in good_features.items():
+        diff[idx] += value
+    for idx, value in bad_features.items():
+        diff[idx] -= value
+    return {idx: value for idx, value in diff.items() if abs(value) > 0.0}
+
+
+def sigmoid_neg(value: float) -> float:
+    if value >= 40:
+        return 0.0
+    if value <= -40:
+        return 1.0
+    return 1.0 / (1.0 + math.exp(value))
+
+
+def pairwise_training_pass(
+    *,
+    weights: np.ndarray,
+    rows_by_state: dict[str, list[dict[str, Any]]],
+    feature_cache: dict[str, dict[int, float]],
+    rng: random.Random,
+    learning_rate: float,
+    l2: float,
+    pairwise_weight: float,
+    pair_min_margin: float,
+    max_pairs_per_state: int,
+) -> dict[str, Any]:
+    pair_count = 0
+    correct = 0
+    loss_total = 0.0
+    state_ids = list(rows_by_state.keys())
+    rng.shuffle(state_ids)
+    for state_id in state_ids:
+        rows = rows_by_state[state_id]
+        if len(rows) < 2:
+            continue
+        pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        ordered = sorted(rows, key=lambda row: float(row["target"]), reverse=True)
+        for i, good in enumerate(ordered):
+            for bad in ordered[i + 1 :]:
+                if float(good["target"]) - float(bad["target"]) >= pair_min_margin:
+                    pairs.append((good, bad))
+        if not pairs:
+            continue
+        rng.shuffle(pairs)
+        if max_pairs_per_state > 0:
+            pairs = pairs[:max_pairs_per_state]
+        for good, bad in pairs:
+            good_features = feature_cache[str(good["record_id"])]
+            bad_features = feature_cache[str(bad["record_id"])]
+            good_pred = predict_one(weights, 0.0, good_features)
+            bad_pred = predict_one(weights, 0.0, bad_features)
+            margin = good_pred - bad_pred
+            if margin > 0:
+                correct += 1
+            pair_count += 1
+            loss_total += math.log1p(math.exp(-max(-40.0, min(40.0, margin))))
+            grad = -pairwise_weight * sigmoid_neg(margin)
+            diff = feature_difference(good_features, bad_features)
+            apply_feature_update(
+                weights,
+                diff,
+                learning_rate=learning_rate,
+                l2=l2,
+                grad_scale=grad,
+            )
+    return {
+        "pairs": pair_count,
+        "pair_accuracy_online": round(correct / pair_count, 6) if pair_count else 0.0,
+        "pair_loss_online": round(loss_total / pair_count, 6) if pair_count else 0.0,
     }
 
 
@@ -286,12 +409,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=0.03)
     parser.add_argument("--l2", type=float, default=1e-6)
     parser.add_argument("--target-clip", type=float, default=2.0)
+    parser.add_argument(
+        "--target-mode",
+        choices=["residual_future", "action_value_total", "immediate_only"],
+        default="residual_future",
+    )
     parser.add_argument("--any-gain-weight", type=float, default=0.0)
     parser.add_argument("--boundary-penalty", type=float, default=0.0)
     parser.add_argument("--deflection-penalty", type=float, default=0.0)
     parser.add_argument("--vague-penalty", type=float, default=0.0)
     parser.add_argument("--unmapped-penalty", type=float, default=0.0)
     parser.add_argument("--pair-min-margin", type=float, default=0.01)
+    parser.add_argument("--pairwise-weight", type=float, default=0.0)
+    parser.add_argument("--max-pairs-per-state", type=int, default=8)
     return parser.parse_args()
 
 
@@ -300,6 +430,7 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     rows = load_rows(
         args.record_path,
+        target_mode=args.target_mode,
         any_gain_weight=args.any_gain_weight,
         boundary_penalty=args.boundary_penalty,
         deflection_penalty=args.deflection_penalty,
@@ -312,9 +443,20 @@ def main() -> None:
         "min_n": args.min_n,
         "max_n": args.max_n,
         "hash_seed": args.seed,
-        "target": "residual_future_value",
+        "target": args.target_mode,
         "record_path": str(args.record_path),
     }
+    feature_cache = {
+        str(row["record_id"]): featurize(
+            row["text"],
+            n_features=args.n_features,
+            min_n=args.min_n,
+            max_n=args.max_n,
+            seed=args.seed,
+        )
+        for row in rows
+    }
+    train_rows_by_state = group_rows_by_state(train_rows)
 
     weights = np.zeros(args.n_features, dtype=np.float32)
     bias = 0.0
@@ -326,22 +468,33 @@ def main() -> None:
         sqerr = 0.0
         for row_idx in order:
             row = train_rows[row_idx]
-            features = featurize(
-                row["text"],
-                n_features=args.n_features,
-                min_n=args.min_n,
-                max_n=args.max_n,
-                seed=args.seed,
-            )
+            features = feature_cache[str(row["record_id"])]
             target = max(-args.target_clip, min(args.target_clip, float(row["target"])))
             pred = predict_one(weights, bias, features)
             err = pred - target
             sqerr += err * err
             grad = max(-1.0, min(1.0, err))
-            if features:
-                for idx, value in features.items():
-                    weights[idx] -= args.learning_rate * (grad * value + args.l2 * float(weights[idx]))
+            apply_feature_update(
+                weights,
+                features,
+                learning_rate=args.learning_rate,
+                l2=args.l2,
+                grad_scale=grad,
+            )
             bias -= args.learning_rate * grad
+        pair_trace = {}
+        if args.pairwise_weight > 0:
+            pair_trace = pairwise_training_pass(
+                weights=weights,
+                rows_by_state=train_rows_by_state,
+                feature_cache=feature_cache,
+                rng=rng,
+                learning_rate=args.learning_rate,
+                l2=args.l2,
+                pairwise_weight=args.pairwise_weight,
+                pair_min_margin=args.pair_min_margin,
+                max_pairs_per_state=args.max_pairs_per_state,
+            )
         train_pred = predict_rows(weights, bias, train_rows, config)
         eval_pred = predict_rows(weights, bias, eval_rows, config)
         train_y = np.asarray([row["target"] for row in train_rows], dtype=np.float64)
@@ -350,6 +503,7 @@ def main() -> None:
             {
                 "epoch": epoch,
                 "mean_train_sqerr_online": round(sqerr / max(1, len(train_rows)), 6),
+                "pairwise": pair_trace,
                 "train": regression_metrics(train_y, train_pred),
                 "eval": regression_metrics(eval_y, eval_pred),
             }
@@ -379,6 +533,9 @@ def main() -> None:
             "learning_rate": args.learning_rate,
             "l2": args.l2,
             "target_clip": args.target_clip,
+            "target_mode": args.target_mode,
+            "pairwise_weight": args.pairwise_weight,
+            "max_pairs_per_state": args.max_pairs_per_state,
         },
     }
     np.savez_compressed(args.output_dir / "final_patient_rfv_value_model_numpy.npz", weights=weights, bias=np.asarray([bias], dtype=np.float32))

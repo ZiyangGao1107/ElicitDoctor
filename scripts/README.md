@@ -45,8 +45,9 @@ leading underscore are internal helpers used by the public entry points.
 | `build_final_patient_candidate_rollout.py` | Builds candidate rollouts from sampled states. |
 | `apply_verified_patient_cache_to_candidate_rollout.py` | Applies verified patient cache rows to candidate branches. |
 | `build_final_patient_grpo_groups.py` | Builds same-state GRPO candidate groups. |
+| `build_final_patient_action_value_data.py` | Builds same-state action-value records for Value Model V2. |
 | `build_final_patient_rfv_data.py` | Builds residual future-value training data. |
-| `train_final_patient_rfv_value_model.py` | Lightweight RFV value model trainer. |
+| `train_final_patient_rfv_value_model.py` | Lightweight RFV/action-value model trainer with optional same-state pairwise ranking. |
 | `train_qwen3_doctor_sft_lora.py` | Qwen doctor SFT LoRA trainer. |
 | `train_qwen3_grpo_from_v6_groups.py` | Qwen doctor GRPO trainer. |
 | `run_final_patient_sft_lora.sh` | SFT shell runner. |

@@ -31,6 +31,8 @@ The short script index is in `scripts/README.md`.
   providers.
 - `scripts/build_final_patient_sft_from_online_records.py`: SFT data builder
   from verified final-patient online records.
+- `scripts/build_final_patient_action_value_data.py`: same-state action-value
+  data builder for Value Model V2.
 - `scripts/build_final_patient_rfv_data.py`: residual
   future-value data builder.
 - `scripts/build_final_patient_grpo_groups.py`: GRPO
@@ -78,6 +80,13 @@ pip install -r requirements.txt
 
 Closed-source doctor evaluation requires API credentials supplied through an
 external `.env` file or environment variables. Do not commit keys.
+
+## Value Model V2
+
+The maintained value-model route is same-state action value: given one visible
+dialogue state and several candidate doctor questions, estimate which question
+will recover more canonical evidence over the remaining dialogue. See
+`docs/value_model_v2.md`.
 
 ## Repository Safety
 
