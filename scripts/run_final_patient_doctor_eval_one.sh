@@ -18,6 +18,7 @@ SEVERITIES="${SEVERITIES:-mild_low_info moderate_low_info severe_low_info}"
 REPLAY_BATCH_SIZE="${REPLAY_BATCH_SIZE:-8}"
 REALIZER_BATCH_SIZE="${REALIZER_BATCH_SIZE:-4}"
 CLOSED_MODEL="${CLOSED_MODEL:-gpt-4.1-mini}"
+CLOSED_PROVIDER="${CLOSED_PROVIDER:-openai_compatible}"
 CLOSED_ENV_FILE="${CLOSED_ENV_FILE:-}"
 
 export ACTIVE_REASONING_PROJECT="$PROJECT"
@@ -157,6 +158,7 @@ generate_doctor_outputs() {
   if [[ "$CALLER" == "closed" ]]; then
     "$PY" scripts/call_closed_llm_for_pending_requests.py \
       --env-file "$CLOSED_ENV_FILE" \
+      --provider "$CLOSED_PROVIDER" \
       --pending-path "$pending" \
       --output-path "$MODEL_OUTPUT_PATH" \
       --model "$CLOSED_MODEL" \

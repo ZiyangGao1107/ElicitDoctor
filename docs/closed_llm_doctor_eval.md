@@ -37,6 +37,19 @@ Relevant environment names include:
 
 Do not commit `.env` files or printed API responses containing secrets.
 
+The final-patient one-model runner exposes closed-source doctor settings through
+environment variables:
+
+```bash
+export CLOSED_PROVIDER=openai_compatible  # or openai_responses, anthropic, gemini
+export CLOSED_MODEL=gpt-4.1-mini
+export CLOSED_ENV_FILE=.env
+bash scripts/run_final_patient_doctor_eval_one.sh closed_evidence outputs_closed_gpt41mini_turn24 24
+```
+
+This evaluates the closed model as the doctor. The patient is still the frozen
+final patient simulator.
+
 ## Main Scripts
 
 - `scripts/call_closed_llm_for_pending_requests.py`: generic closed-source

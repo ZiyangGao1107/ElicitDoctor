@@ -31,7 +31,7 @@ leading underscore are internal helpers used by the public entry points.
 | `run_llm_doctor_online_replay.py` | Online replay engine for doctor-patient turns. |
 | `run_final_patient_doctor_eval_one.sh` | One-model final-patient doctor evaluation runner. |
 | `run_final_patient_doctor_eval_suite.sh` | Multi-model final-patient baseline suite runner. |
-| `call_closed_llm_for_pending_requests.py` | Closed-source doctor API caller. |
+| `call_closed_llm_for_pending_requests.py` | Closed-source doctor API caller; supports `openai_compatible`, `openai_responses`, `anthropic`, and `gemini`. |
 | `call_qwen3_hf_lora_for_pending_requests.py` | Qwen base/LoRA doctor generator. |
 | `analyze_tree_aligned_canonical_evidence_recovery.py` | Canonical evidence recovery analyzer. |
 | `summarize_final_patient_baseline_suite.py` | Summarizes baseline suite metrics. |
