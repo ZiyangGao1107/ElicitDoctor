@@ -10,6 +10,9 @@ logs, and generated experiment outputs are not included.
 
 ## What Is Included
 
+Start with `docs/code_guide.md` for a stage-by-stage explanation of the code.
+The short script index is in `scripts/README.md`.
+
 - `scripts/build_dynamic_patient_controller_v3_2.py`: PCV3.2 patient controller
   with cross-turn disclosure state.
 - `scripts/prepare_llm_patient_realizer_requests_v2.py`: converts controller
