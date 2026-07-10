@@ -1,0 +1,234 @@
+{
+  "schema_name": "mdd5k_diagnosis_tree_slot_schema",
+  "version": "2026-06-08",
+  "source": {
+    "tree_space_path": "D:\\Active Reasoning\\Code\\belief_correction_rl\\configs\\mdd5k_diagnosis_tree_space.json",
+    "note": "Slot names are aligned to the MDD-5K diagnosis-tree space. evidence_unit_hints are lightweight mapping/extraction hints, not gate supervision labels."
+  },
+  "gate_target_formula": "topic_responsiveness * information_retention * clarity",
+  "tree_space": {
+    "female_adult": [
+      "sleep",
+      "suicide_or_self_harm",
+      "appetite_loss",
+      "binge_eating",
+      "chest_tightness",
+      "dizziness_or_headache",
+      "palpitation",
+      "hallucination",
+      "menstrual_status",
+      "memory_problem",
+      "cognitive_slowing",
+      "attention_decline",
+      "mania_screen",
+      "hopelessness_or_crying",
+      "romantic_status",
+      "personality",
+      "work_status",
+      "family_psychiatric_history"
+    ],
+    "female_teen": [
+      "parent_awareness",
+      "school_or_study_status",
+      "sleep",
+      "suicide_or_self_harm",
+      "appetite_loss",
+      "binge_eating",
+      "chest_tightness",
+      "dizziness_or_headache",
+      "palpitation",
+      "menstrual_status",
+      "hallucination",
+      "memory_problem",
+      "cognitive_slowing",
+      "attention_decline",
+      "mania_screen",
+      "hopelessness_or_crying",
+      "romantic_status",
+      "personality",
+      "family_psychiatric_history"
+    ],
+    "male_adult": [
+      "sleep",
+      "suicide_or_self_harm",
+      "appetite_loss",
+      "binge_eating",
+      "chest_tightness",
+      "dizziness_or_headache",
+      "palpitation",
+      "hallucination",
+      "memory_problem",
+      "cognitive_slowing",
+      "attention_decline",
+      "mania_screen",
+      "hopelessness_or_crying",
+      "romantic_status",
+      "personality",
+      "work_status",
+      "family_psychiatric_history"
+    ],
+    "male_teen": [
+      "parent_awareness",
+      "school_or_study_status",
+      "sleep",
+      "suicide_or_self_harm",
+      "appetite_loss",
+      "binge_eating",
+      "chest_tightness",
+      "dizziness_or_headache",
+      "palpitation",
+      "hallucination",
+      "memory_problem",
+      "cognitive_slowing",
+      "attention_decline",
+      "mania_screen",
+      "hopelessness_or_crying",
+      "romantic_status",
+      "personality",
+      "family_psychiatric_history"
+    ],
+    "unknown": []
+  },
+  "slots": [
+    {
+      "slot": "parent_awareness",
+      "zh_name": "父母知情与支持",
+      "evidence_unit_hints": ["awareness", "observed_changes", "response_or_support", "communication_barrier"],
+      "criticality": "medium",
+      "question_keywords": ["父母", "爸妈", "爸爸", "妈妈", "家长", "知道", "发现", "支持", "沟通"]
+    },
+    {
+      "slot": "school_or_study_status",
+      "zh_name": "学校或学习状态",
+      "evidence_unit_hints": ["current_status", "task_completion", "performance_change", "avoidance_or_anxiety", "functional_impact"],
+      "criticality": "high",
+      "question_keywords": ["学习", "学校", "上课", "学业", "成绩", "作业", "考试", "班主任", "老师", "集中注意力", "完成任务"]
+    },
+    {
+      "slot": "work_status",
+      "zh_name": "工作状态",
+      "evidence_unit_hints": ["current_status", "performance_change", "attendance_or_functioning", "work_stressor", "functional_impact"],
+      "criticality": "high",
+      "question_keywords": ["工作", "上班", "同事", "老板", "请假", "离职", "绩效", "完成任务", "职场"]
+    },
+    {
+      "slot": "sleep",
+      "zh_name": "睡眠",
+      "evidence_unit_hints": ["disturbance_type", "frequency_or_duration", "severity", "daytime_impact"],
+      "criticality": "medium",
+      "question_keywords": ["睡眠", "睡觉", "入睡", "失眠", "醒来", "早醒", "噩梦", "睡不着", "睡得"]
+    },
+    {
+      "slot": "suicide_or_self_harm",
+      "zh_name": "自杀或自伤",
+      "evidence_unit_hints": ["ideation_or_behavior", "recent_timeframe", "frequency_or_intensity", "intent_or_plan_or_control", "safety_status"],
+      "criticality": "critical",
+      "question_keywords": ["自杀", "自残", "伤害自己", "不想活", "轻生", "活着没意思", "刀片", "划伤", "死"]
+    },
+    {
+      "slot": "appetite_loss",
+      "zh_name": "食欲下降",
+      "evidence_unit_hints": ["presence", "direction", "amount_or_severity", "duration", "weight_impact"],
+      "criticality": "medium",
+      "question_keywords": ["食欲", "胃口", "吃不下", "不想吃", "体重减轻", "体重下降", "吃饭"]
+    },
+    {
+      "slot": "binge_eating",
+      "zh_name": "暴饮暴食",
+      "evidence_unit_hints": ["presence", "frequency", "trigger", "amount_or_loss_of_control"],
+      "criticality": "medium",
+      "question_keywords": ["暴饮暴食", "暴食", "吃很多", "控制不住", "大量进食", "夜里吃", "零食"]
+    },
+    {
+      "slot": "chest_tightness",
+      "zh_name": "胸闷",
+      "evidence_unit_hints": ["presence", "frequency", "trigger_or_context", "associated_symptoms"],
+      "criticality": "medium",
+      "question_keywords": ["胸闷", "胸口", "呼吸困难", "喘不过气", "气短", "压在胸口"]
+    },
+    {
+      "slot": "dizziness_or_headache",
+      "zh_name": "头晕或头痛",
+      "evidence_unit_hints": ["presence", "frequency", "severity", "trigger_or_pattern"],
+      "criticality": "medium",
+      "question_keywords": ["头晕", "头痛", "头疼", "晕眩", "眩晕", "头昏"]
+    },
+    {
+      "slot": "palpitation",
+      "zh_name": "心慌或心悸",
+      "evidence_unit_hints": ["presence", "frequency", "trigger_or_context", "associated_anxiety_or_somatic_symptoms"],
+      "criticality": "medium",
+      "question_keywords": ["心慌", "心悸", "心跳", "心跳加快", "心脏跳", "胸口发紧"]
+    },
+    {
+      "slot": "hallucination",
+      "zh_name": "幻觉或异常知觉",
+      "evidence_unit_hints": ["presence", "modality_or_content", "frequency", "insight_or_distress"],
+      "criticality": "high",
+      "question_keywords": ["幻听", "幻觉", "声音", "别人听不到", "看到别人看不到", "奇怪的声音", "被害", "妄想"]
+    },
+    {
+      "slot": "menstrual_status",
+      "zh_name": "月经情况",
+      "evidence_unit_hints": ["regularity", "cycle_change", "pain_or_volume_change", "relation_to_mood_or_somatic_state"],
+      "criticality": "low",
+      "question_keywords": ["月经", "经期", "周期", "痛经", "经血", "月经量", "经前"]
+    },
+    {
+      "slot": "memory_problem",
+      "zh_name": "记忆问题",
+      "evidence_unit_hints": ["presence", "task_context", "severity_or_frequency", "functional_impact"],
+      "criticality": "medium",
+      "question_keywords": ["记忆", "记不住", "忘记", "健忘", "回忆", "记忆力"]
+    },
+    {
+      "slot": "cognitive_slowing",
+      "zh_name": "思维迟缓",
+      "evidence_unit_hints": ["presence", "task_example", "duration_or_frequency", "functional_impact"],
+      "criticality": "medium",
+      "question_keywords": ["思维", "反应慢", "脑子", "头脑变笨", "变笨", "迟钝", "变慢", "理解", "空白"]
+    },
+    {
+      "slot": "attention_decline",
+      "zh_name": "注意力下降",
+      "evidence_unit_hints": ["presence", "task_context", "severity_or_frequency", "functional_impact"],
+      "criticality": "medium",
+      "question_keywords": ["注意力", "集中", "走神", "分心", "专注", "集中注意力"]
+    },
+    {
+      "slot": "mania_screen",
+      "zh_name": "躁狂筛查",
+      "evidence_unit_hints": ["elevated_or_irritable_mood", "decreased_need_for_sleep", "increased_activity_or_impulsivity", "duration"],
+      "criticality": "high",
+      "question_keywords": ["兴奋", "狂躁", "精力充沛", "睡眠减少", "话很多", "冲动", "花钱", "停不下来"]
+    },
+    {
+      "slot": "hopelessness_or_crying",
+      "zh_name": "绝望或哭泣",
+      "evidence_unit_hints": ["hopelessness_or_crying_presence", "frequency", "trigger_or_context", "severity"],
+      "criticality": "high",
+      "question_keywords": ["心情", "情绪", "精神状态", "困扰", "烦心", "绝望", "悲观", "哭", "流泪", "难过", "无望", "情绪低落", "低落"]
+    },
+    {
+      "slot": "romantic_status",
+      "zh_name": "情感或婚恋状态",
+      "evidence_unit_hints": ["relationship_status", "stressor_or_conflict", "support_or_loss", "impact"],
+      "criticality": "low",
+      "question_keywords": ["恋爱", "感情", "情感", "婚恋", "伴侣", "男朋友", "女朋友", "丈夫", "妻子", "分手"]
+    },
+    {
+      "slot": "personality",
+      "zh_name": "性格与应对方式",
+      "evidence_unit_hints": ["baseline_trait", "coping_style", "interpersonal_pattern"],
+      "criticality": "low",
+      "question_keywords": ["性格", "内向", "外向", "应对", "处理问题", "求助", "脾气"]
+    },
+    {
+      "slot": "family_psychiatric_history",
+      "zh_name": "家族精神疾病史",
+      "evidence_unit_hints": ["relative", "condition_or_diagnosis", "treatment_or_course", "relevance"],
+      "criticality": "medium",
+      "question_keywords": ["家族史", "精神疾病", "亲戚", "家里人", "遗传", "病史", "精神科"]
+    }
+  ]
+}
