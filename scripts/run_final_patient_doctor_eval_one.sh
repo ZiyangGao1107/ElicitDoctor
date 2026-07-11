@@ -89,6 +89,17 @@ case "$MODEL_KEY" in
     PROVIDER_TAG="remote_qwen3_8b_grpo_rfv2_ckpt1600_pcv32_online"
     MODEL_TAG="Qwen3-8B-GRPO-RFV-v2-ckpt1600-PCV32-OnlineFinalPatient"
     ;;
+  qwen_lora_custom|custom_qwen_lora)
+    ADAPTER_PATH="${CUSTOM_ADAPTER_PATH:-}"
+    CUSTOM_MODEL_ID="${CUSTOM_MODEL_ID:-qwen_lora_custom}"
+    MODEL_OUTPUT_FILENAME="${CUSTOM_MODEL_OUTPUT_FILENAME:-${CUSTOM_MODEL_ID}_pcv32_online_doctor_outputs.jsonl}"
+    PROVIDER_TAG="${CUSTOM_PROVIDER_TAG:-remote_qwen3_8b_${CUSTOM_MODEL_ID}_pcv32_online}"
+    MODEL_TAG="${CUSTOM_MODEL_TAG:-Qwen3-8B-${CUSTOM_MODEL_ID}-PCV32-OnlineFinalPatient}"
+    if [[ -z "$ADAPTER_PATH" ]]; then
+      echo "CUSTOM_ADAPTER_PATH is required for MODEL_KEY=$MODEL_KEY" >&2
+      exit 2
+    fi
+    ;;
   *)
     echo "Unknown MODEL_KEY=$MODEL_KEY" >&2
     exit 2

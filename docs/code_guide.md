@@ -190,6 +190,12 @@ summary reports:
 - severe
 - mean
 
+For trainable methods, do not compare arbitrary final checkpoints. Each method
+must first evaluate its predeclared checkpoints on the same frozen Final Patient
+selection split and select one checkpoint with
+`scripts/select_final_patient_checkpoint.py`. See
+`docs/checkpoint_selection.md`.
+
 ## Closed-Source Doctor Calling
 
 Main file:
