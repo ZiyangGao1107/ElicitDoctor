@@ -63,7 +63,57 @@ def reward_value(row: dict[str, Any], reward_source: str) -> float:
         return safe_float(row.get("cumulative_slot_sufficiency"))
     if reward_source == "g_target":
         return safe_float(row.get("g_target"))
+    if reward_source == "action_value_total":
+        return safe_float(row.get("action_value_total_gain"))
     raise ValueError(f"Unsupported reward_source={reward_source!r}")
+
+
+def load_value_predictions(path: Path | None, value_field: str) -> dict[str, dict[str, float]]:
+    maps: dict[str, dict[str, float]] = {
+        "record_id": {},
+        "source_record_id": {},
+        "state_candidate": {},
+        "action_value_record_id": {},
+    }
+    if not path:
+        return maps
+    for row in iter_jsonl(path):
+        value = safe_float(row.get(value_field), default=float("nan"))
+        if value != value:
+            continue
+        record_id = str(row.get("record_id") or "")
+        if record_id:
+            maps["record_id"][record_id] = value
+        metadata = row.get("metadata") or {}
+        source_record_id = str(row.get("source_record_id") or metadata.get("source_record_id") or "")
+        if source_record_id:
+            maps["source_record_id"][source_record_id] = value
+        source_state_id = str(row.get("source_state_id") or metadata.get("source_state_id") or row.get("state_id") or "")
+        candidate_index = str(row.get("candidate_index") or metadata.get("candidate_index") or "")
+        if source_state_id and candidate_index:
+            maps["state_candidate"][f"{source_state_id}::{candidate_index}"] = value
+            maps["action_value_record_id"][f"{source_state_id}::candidate_{candidate_index}"] = value
+    return maps
+
+
+def value_prediction_for(row: dict[str, Any], maps: dict[str, dict[str, float]]) -> float | None:
+    record_id = str(row.get("record_id") or "")
+    if record_id in maps["source_record_id"]:
+        return maps["source_record_id"][record_id]
+    if record_id in maps["record_id"]:
+        return maps["record_id"][record_id]
+    if record_id in maps["action_value_record_id"]:
+        return maps["action_value_record_id"][record_id]
+    state_id = str(row.get("source_state_id") or row.get("scenario_id") or "")
+    candidate_index = str(row.get("candidate_index") or "")
+    if state_id and candidate_index:
+        key = f"{state_id}::{candidate_index}"
+        if key in maps["state_candidate"]:
+            return maps["state_candidate"][key]
+        action_key = f"{state_id}::candidate_{candidate_index}"
+        if action_key in maps["action_value_record_id"]:
+            return maps["action_value_record_id"][action_key]
+    return None
 
 
 def visible_prompt(row: dict[str, Any]) -> str:
@@ -96,9 +146,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
         "--reward-source",
-        choices=["immediate_delta", "cumulative_after", "g_target"],
+        choices=["immediate_delta", "cumulative_after", "g_target", "action_value_total"],
         default="immediate_delta",
     )
+    parser.add_argument("--value-predictions", type=Path, default=None)
+    parser.add_argument("--value-field", default="prediction")
+    parser.add_argument("--base-reward-weight", type=float, default=1.0)
+    parser.add_argument("--value-weight", type=float, default=0.0)
+    parser.add_argument("--require-value-predictions", action="store_true")
     parser.add_argument("--min-candidates", type=int, default=2)
     parser.add_argument("--max-candidates", type=int, default=8)
     parser.add_argument("--allow-non-verified", action="store_true")
@@ -110,6 +165,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    value_maps = load_value_predictions(args.value_predictions, args.value_field)
+    if args.value_weight != 0.0 and not args.value_predictions:
+        raise ValueError("--value-predictions is required when --value-weight is non-zero.")
 
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     counters: Counter[str] = Counter()
@@ -143,10 +201,20 @@ def main() -> None:
                 counters["skip_duplicate_question"] += 1
                 continue
             seen_questions.add(question)
+            base_reward = reward_value(row, args.reward_source)
+            predicted_value = value_prediction_for(row, value_maps)
+            if args.value_weight != 0.0 and predicted_value is None:
+                counters["skip_missing_value_prediction"] += 1
+                if args.require_value_predictions:
+                    continue
+                predicted_value = 0.0
+            final_reward = args.base_reward_weight * base_reward
+            if predicted_value is not None:
+                final_reward += args.value_weight * predicted_value
             responses.append(
                 {
                     "text": question,
-                    "reward": round(reward_value(row, args.reward_source), 6),
+                    "reward": round(final_reward, 6),
                     "metadata": {
                         "record_id": row.get("record_id"),
                         "request_id": row.get("request_id"),
@@ -161,6 +229,11 @@ def main() -> None:
                         "delta_cumulative_slot_sufficiency": row.get("delta_cumulative_slot_sufficiency"),
                         "cumulative_slot_sufficiency": row.get("cumulative_slot_sufficiency"),
                         "g_target": row.get("g_target"),
+                        "action_value_total_gain": row.get("action_value_total_gain"),
+                        "base_reward": round(base_reward, 6),
+                        "value_prediction": round(predicted_value, 6) if predicted_value is not None else None,
+                        "base_reward_weight": args.base_reward_weight,
+                        "value_weight": args.value_weight,
                         "reward_source": args.reward_source,
                     },
                 }
@@ -205,6 +278,11 @@ def main() -> None:
         "settings": {
             "records": str(args.records),
             "reward_source": args.reward_source,
+            "value_predictions": str(args.value_predictions) if args.value_predictions else None,
+            "value_field": args.value_field,
+            "base_reward_weight": args.base_reward_weight,
+            "value_weight": args.value_weight,
+            "require_value_predictions": args.require_value_predictions,
             "min_candidates": args.min_candidates,
             "max_candidates": args.max_candidates,
             "require_verified": not args.allow_non_verified,
@@ -213,6 +291,7 @@ def main() -> None:
         },
         "counters": dict(counters),
         "states_seen": len(grouped),
+        "value_prediction_records_loaded": sum(len(values) for values in value_maps.values()),
         "groups": len(groups),
         "candidate_count_distribution": {
             str(k): v for k, v in sorted(Counter(len(group.get("responses") or []) for group in groups).items())

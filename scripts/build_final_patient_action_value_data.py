@@ -348,6 +348,7 @@ def build_rows(
                 "source_records": str(records_path),
                 "source_state_id": state_id,
                 "candidate_index": candidate_index,
+                "source_record_id": first.get("record_id"),
                 "metric_name": metric_name,
                 "canonical_denominator_count": len(denominator),
                 "branch_record_count": len(branch_records),

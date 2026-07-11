@@ -226,6 +226,10 @@ def reward_value(response: dict[str, Any]) -> float:
         return 0.0
 
 
+def normalize_response_text(value: Any) -> str:
+    return " ".join(str(value or "").strip().split())
+
+
 def load_groups(
     path: Path,
     *,
@@ -235,12 +239,22 @@ def load_groups(
     min_candidates: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     groups = []
+    filter_counters: Counter[str] = Counter()
     for group in iter_jsonl(path):
+        filter_counters["raw_groups_seen"] += 1
         responses = []
+        seen_texts: set[str] = set()
+        group_had_duplicate_text = False
         for response in group.get("responses") or []:
-            text = str(response.get("text") or "").strip()
+            text = normalize_response_text(response.get("text"))
             if not text:
+                filter_counters["skip_empty_response"] += 1
                 continue
+            if text in seen_texts:
+                filter_counters["skip_duplicate_response_text"] += 1
+                group_had_duplicate_text = True
+                continue
+            seen_texts.add(text)
             responses.append(
                 {
                     "text": text,
@@ -248,10 +262,14 @@ def load_groups(
                     "metadata": response.get("metadata") or {},
                 }
             )
+        if group_had_duplicate_text:
+            filter_counters["groups_with_duplicate_response_text"] += 1
         rewards = [reward_value(response) for response in responses]
         if len(responses) < min_candidates:
+            filter_counters["skip_too_few_candidates"] += 1
             continue
         if max(rewards) - min(rewards) <= 1e-9:
+            filter_counters["skip_zero_reward_margin"] += 1
             continue
         groups.append(
             {
@@ -287,6 +305,7 @@ def load_groups(
         "severity_counts": dict(severity_counts),
         "candidate_count_distribution": {str(k): v for k, v in sorted(candidate_counts.items())},
         "mean_reward_margin": round(sum(reward_margins) / len(reward_margins), 6) if reward_margins else 0.0,
+        "filter_counters": dict(filter_counters),
     }
     return train_records, eval_records, summary
 
@@ -331,10 +350,14 @@ class RewardGroupDataset(Dataset):
                 max_candidates=max_candidates,
             )
             encoded_responses = []
+            seen_texts: set[str] = set()
             for response in responses:
-                text = str(response.get("text") or "").strip()
+                text = normalize_response_text(response.get("text"))
                 if not text:
                     continue
+                if text in seen_texts:
+                    continue
+                seen_texts.add(text)
                 encoded = encode_prompt_answer(tokenizer, prompt, text, max_length)
                 if encoded is None:
                     continue

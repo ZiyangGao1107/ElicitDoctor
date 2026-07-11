@@ -48,10 +48,12 @@ leading underscore are internal helpers used by the public entry points.
 | `build_final_patient_action_value_data.py` | Builds same-state action-value records for Value Model V2. |
 | `build_final_patient_rfv_data.py` | Builds residual future-value training data. |
 | `train_final_patient_rfv_value_model.py` | Lightweight RFV/action-value model trainer with optional same-state pairwise ranking. |
+| `score_final_patient_value_model.py` | Scores action-value records with a trained lightweight value model. |
 | `train_qwen3_doctor_sft_lora.py` | Qwen doctor SFT LoRA trainer. |
 | `train_qwen3_grpo_from_v6_groups.py` | Qwen doctor GRPO trainer. |
 | `run_final_patient_sft_lora.sh` | SFT shell runner. |
 | `run_final_patient_grpo_from_groups.sh` | GRPO shell runner. |
+| `run_final_patient_value_model_v2.sh` | End-to-end Value Model V2 data, training, scoring, and value-augmented GRPO group runner. |
 
 ## Internal Helpers
 

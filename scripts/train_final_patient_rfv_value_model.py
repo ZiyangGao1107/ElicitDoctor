@@ -383,15 +383,20 @@ def predict_rows(weights: np.ndarray, bias: float, rows: list[dict[str, Any]], c
 def write_predictions(path: Path, rows: list[dict[str, Any]], preds: np.ndarray) -> None:
     with path.open("w", encoding="utf-8", newline="\n") as f:
         for row, pred in zip(rows, preds):
+            metadata = row.get("metadata") or {}
             out = {
                 "record_id": row.get("record_id"),
                 "state_id": row.get("state_id"),
                 "base_severity": row.get("base_severity"),
                 "candidate_action": row.get("candidate_action"),
+                "source_state_id": metadata.get("source_state_id"),
+                "candidate_index": metadata.get("candidate_index"),
+                "source_record_id": metadata.get("source_record_id"),
                 "target": round(float(row["target"]), 6),
                 "prediction": round(float(pred), 6),
                 "future_target_gain": row.get("future_target_gain"),
                 "immediate_target_gain": row.get("immediate_target_gain"),
+                "metadata": metadata,
             }
             f.write(json.dumps(out, ensure_ascii=False) + "\n")
 
@@ -511,6 +516,7 @@ def main() -> None:
 
     train_pred = predict_rows(weights, bias, train_rows, config)
     eval_pred = predict_rows(weights, bias, eval_rows, config)
+    all_pred = predict_rows(weights, bias, rows, config)
     train_y = np.asarray([row["target"] for row in train_rows], dtype=np.float64)
     eval_y = np.asarray([row["target"] for row in eval_rows], dtype=np.float64)
     all_targets = np.asarray([row["target"] for row in rows], dtype=np.float64)
@@ -527,6 +533,7 @@ def main() -> None:
         "train_metrics": regression_metrics(train_y, train_pred),
         "eval_metrics": regression_metrics(eval_y, eval_pred),
         "eval_pair_metrics": pair_metrics(eval_rows, eval_pred, args.pair_min_margin),
+        "all_pair_metrics": pair_metrics(rows, all_pred, args.pair_min_margin),
         "config": config,
         "training": {
             "epochs": args.epochs,
@@ -542,6 +549,7 @@ def main() -> None:
     write_json(args.output_dir / "final_patient_rfv_value_model_config.json", config)
     write_json(args.output_dir / "final_patient_rfv_value_model_train_trace.json", trace)
     write_json(args.output_dir / "final_patient_rfv_value_model_train_summary.json", summary)
+    write_predictions(args.output_dir / "final_patient_rfv_value_model_all_predictions.jsonl", rows, all_pred)
     write_predictions(args.output_dir / "final_patient_rfv_value_model_eval_predictions.jsonl", eval_rows, eval_pred)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 

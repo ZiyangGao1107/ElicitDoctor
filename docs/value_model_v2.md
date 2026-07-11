@@ -81,6 +81,14 @@ If candidate branches contain only the first patient response, the target is a
 one-step action value. If candidate branches are continued for more turns, the
 same builder automatically includes future branch gains.
 
+The same steps can be run with the wrapper:
+
+```bash
+bash scripts/run_final_patient_value_model_v2.sh \
+  outputs_final_patient_verified_candidate_rollout_rfv2/final_patient_candidate_verified_rollout_records.jsonl \
+  rfv2_value_v2
+```
+
 ## Training
 
 Train the lightweight value model with action-value targets and same-state
@@ -94,6 +102,16 @@ python scripts/train_final_patient_rfv_value_model.py \
   --pairwise-weight 0.5 \
   --pair-min-margin 0.01 \
   --epochs 12
+```
+
+Score action-value records with the trained model:
+
+```bash
+python scripts/score_final_patient_value_model.py \
+  --record-path outputs_final_patient_action_value_data_rfv2/final_patient_action_value_records.jsonl \
+  --model-dir outputs_final_patient_action_value_model_v2 \
+  --output-dir outputs_final_patient_action_value_scores_v2 \
+  --target-mode action_value_total
 ```
 
 Important metrics in
@@ -115,6 +133,19 @@ component for same-state GRPO groups:
 reward = canonical evidence gain
        + lambda_value * predicted residual/action value
        - safety/avoidance penalties
+```
+
+Build value-augmented GRPO groups:
+
+```bash
+python scripts/build_final_patient_grpo_groups.py \
+  --records outputs_final_patient_verified_candidate_rollout_rfv2/final_patient_candidate_verified_rollout_records.jsonl \
+  --output-dir outputs_final_patient_valueaug_grpo_groups_v2 \
+  --reward-source immediate_delta \
+  --value-predictions outputs_final_patient_action_value_scores_v2/final_patient_value_model_predictions.jsonl \
+  --base-reward-weight 1.0 \
+  --value-weight 0.5 \
+  --require-value-predictions
 ```
 
 Do not use hidden patient evidence as model-visible doctor input. Hidden

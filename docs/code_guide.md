@@ -218,6 +218,8 @@ Main files:
 - `scripts/build_final_patient_action_value_data.py`
 - `scripts/build_final_patient_rfv_data.py`
 - `scripts/train_final_patient_rfv_value_model.py`
+- `scripts/score_final_patient_value_model.py`
+- `scripts/run_final_patient_value_model_v2.sh`
 
 These scripts rebuild training data under the final patient setting.
 
@@ -240,7 +242,9 @@ Value Model V2 should be trained on same-state candidate branches. Its main
 target is action value: immediate canonical evidence gain plus future branch
 canonical evidence gain. The trainer supports this through
 `--target-mode action_value_total` and optional pairwise ranking with
-`--pairwise-weight`. See `docs/value_model_v2.md`.
+`--pairwise-weight`. The trained value model can then score candidate branches
+and `build_final_patient_grpo_groups.py` can combine base reward with
+`--value-predictions` and `--value-weight`. See `docs/value_model_v2.md`.
 
 ## Training Runners
 

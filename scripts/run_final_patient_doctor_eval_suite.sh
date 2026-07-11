@@ -12,6 +12,7 @@ REALIZER_BATCH_SIZE="${REALIZER_BATCH_SIZE:-4}"
 MAX_GROUPS="${MAX_GROUPS:-10000}"
 MAX_PROFILES="${MAX_PROFILES:-108}"
 MAX_PER_SLOT="${MAX_PER_SLOT:-999}"
+EVAL_SPLITS="${EVAL_SPLITS:-test}"
 
 cd "$PHASE_DIR"
 mkdir -p "outputs_${RUN_TAG}" logs
@@ -22,7 +23,7 @@ IFS=',' read -r -a MODELS <<< "$MODELS_CSV"
 
 echo "=== PCV3.2 online final-patient doctor suite start $(date) tag=$RUN_TAG turns=$MAX_TURNS ===" | tee "$SUITE_LOG"
 echo "models=${MODELS[*]}" | tee -a "$SUITE_LOG"
-echo "max_groups=$MAX_GROUPS max_profiles=$MAX_PROFILES max_per_slot=$MAX_PER_SLOT" | tee -a "$SUITE_LOG"
+echo "max_groups=$MAX_GROUPS max_profiles=$MAX_PROFILES max_per_slot=$MAX_PER_SLOT eval_splits=$EVAL_SPLITS" | tee -a "$SUITE_LOG"
 echo "replay_batch_size=$REPLAY_BATCH_SIZE realizer_batch_size=$REALIZER_BATCH_SIZE" | tee -a "$SUITE_LOG"
 
 for MODEL_KEY in "${MODELS[@]}"; do
@@ -33,6 +34,7 @@ for MODEL_KEY in "${MODELS[@]}"; do
   MAX_GROUPS="$MAX_GROUPS" \
   MAX_PROFILES="$MAX_PROFILES" \
   MAX_PER_SLOT="$MAX_PER_SLOT" \
+  EVAL_SPLITS="$EVAL_SPLITS" \
   REPLAY_BATCH_SIZE="$REPLAY_BATCH_SIZE" \
   REALIZER_BATCH_SIZE="$REALIZER_BATCH_SIZE" \
     bash scripts/run_final_patient_doctor_eval_one.sh "$MODEL_KEY" "$OUT" "$MAX_TURNS" \
