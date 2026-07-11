@@ -49,6 +49,7 @@ leading underscore are internal helpers used by the public entry points.
 | `build_final_patient_rfv_data.py` | Builds residual future-value training data. |
 | `train_final_patient_rfv_value_model.py` | Lightweight RFV/action-value model trainer with optional same-state pairwise ranking. |
 | `score_final_patient_value_model.py` | Scores action-value records with a trained lightweight value model. |
+| `select_final_patient_checkpoint.py` | Selects SFT/value/GRPO/RFV checkpoints from existing summaries with explicit stage rules. |
 | `train_qwen3_doctor_sft_lora.py` | Qwen doctor SFT LoRA trainer. |
 | `train_qwen3_grpo_from_v6_groups.py` | Qwen doctor GRPO trainer. |
 | `run_final_patient_sft_lora.sh` | SFT shell runner. |

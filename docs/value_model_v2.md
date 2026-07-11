@@ -164,3 +164,8 @@ Before launching a full GRPO/RFV run, require:
 - positive held-out Spearman
 - positive pairwise accuracy above random
 - severe subgroup not worse than the non-value baseline
+
+After training, select the value model checkpoint with
+`scripts/select_final_patient_checkpoint.py --stage value_model`. The selector
+uses held-out same-state ranking metrics rather than generic regression loss;
+see `docs/checkpoint_selection.md`.
