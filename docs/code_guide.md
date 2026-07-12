@@ -172,6 +172,10 @@ Main files:
 
 Online doctor replay alternates between doctor questions and verified patient
 responses. The patient simulator must stay fixed across all doctor models.
+Each baseline run maintains its own verified patient cache under its output
+directory. That cache belongs to the exact doctor trajectory that created it.
+It should not be copied across closed-source models, Qwen checkpoints, splits,
+or turn budgets.
 
 The suite runner evaluates models such as:
 

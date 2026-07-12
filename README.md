@@ -68,6 +68,11 @@ Closed-source doctor baselines are run by preparing pending doctor requests,
 calling the configured API provider, then continuing the same online replay
 against the verified final patient simulator.
 
+For reproduction, use a fresh output directory for each baseline model/run. The
+`current_verified_patient_cache.jsonl` produced during evaluation is valid only
+inside that run; do not reuse patient caches or doctor-output JSONL files across
+models, runs, splits, or turn budgets.
+
 See `docs/closed_llm_doctor_eval.md`.
 
 ## Minimal Environment

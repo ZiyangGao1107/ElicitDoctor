@@ -8,13 +8,41 @@ environment used by open-source and trained Qwen doctors.
 1. Build pending doctor requests for the current replay state.
 2. Call the closed-source doctor model with `call_closed_llm_for_pending_requests.py`.
 3. Build patient-realizer requests from the doctor outputs.
-4. Realize patient responses using Qwen3-8B, or read them from the verified cache.
+4. Realize patient responses using Qwen3-8B, or read an already verified
+   response from this run's own patient cache.
 5. Verify and repair patient responses when needed.
 6. Run the actual replay update.
 7. Run canonical evidence analysis and summarize mild/moderate/severe/mean.
 
 The final patient setting must be identical across closed-source, base, SFT,
 GRPO, ValueAug, and RFV doctors.
+
+## Cache Boundary
+
+The verified patient cache is an internal reproducibility mechanism for one
+online run. It is safe to reuse only inside the same output directory, model,
+split, turn budget, and patient setting. It prevents repeated Qwen3-8B patient
+realizer calls for the exact same patient-realizer request.
+
+Do not seed a new baseline with patient responses generated from another doctor
+model or another run. In particular, do not evaluate a closed-source doctor by
+reusing a cache produced from RFV, SFT, Qwen base, or another closed model's
+doctor questions. That would test the wrong dialogue trajectory.
+
+For a fresh baseline reproduction, the correct flow is:
+
+```text
+current doctor model asks a question
+  -> controller builds the patient-realizer request
+  -> Qwen3-8B realizer answers
+  -> verifier/repair accepts it
+  -> this run writes current_verified_patient_cache.jsonl
+  -> replay advances
+```
+
+The final records should still show `patient_realizer_mode ==
+"verified_llm_cache"` because replay consumes the verified response after it has
+been generated and cached for the current run.
 
 ## API Configuration
 
@@ -50,6 +78,20 @@ bash scripts/run_final_patient_doctor_eval_one.sh closed_evidence outputs_closed
 This evaluates the closed model as the doctor. The patient is still the frozen
 final patient simulator.
 
+Use a new output directory or run tag for every independent baseline run:
+
+```bash
+export CLOSED_PROVIDER=openai_compatible
+export CLOSED_MODEL=gpt-4.1-mini
+export CLOSED_ENV_FILE=.env
+bash scripts/run_final_patient_doctor_eval_one.sh \
+  closed_evidence outputs_closed_gpt41mini_turn24_run1 24
+```
+
+If a run is interrupted, resume only with a recovery script that preserves the
+same output directory. Do not start a second independent baseline by pointing it
+at the first run's directory.
+
 ## Main Scripts
 
 - `scripts/call_closed_llm_for_pending_requests.py`: generic closed-source
@@ -67,3 +109,8 @@ final patient simulator.
 `run_final_patient_doctor_eval_one.sh` recreates its output
 directory at startup. Do not restart a running model output directory unless the
 recovery plan explicitly preserves existing records.
+
+Do not copy `doctor_outputs.jsonl` or `current_verified_patient_cache.jsonl`
+from another model into a new baseline directory. A baseline is valid only if
+its doctor outputs are produced by the model being evaluated and its patient
+cache is generated from that same dialogue.
