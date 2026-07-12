@@ -10,12 +10,19 @@ from typing import Any
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_DIR = BASE_DIR / "outputs_final_patient_sft_data"
+DEFAULT_DATASET_PREFIX = "mdd5k"
 
 SYSTEM_PROMPT = (
     "你是一名用于研究场景的精神心理主动问诊 doctor agent。"
     "你的任务是根据可见的医患对话历史，提出下一句自然、具体、安全的医生问题，"
     "以逐步收集诊断相关证据。不要给出诊断结论，不要暴露任何内部标签、症状槽位、"
     "诊断树节点或患者模拟器信息。"
+)
+
+EN_SYSTEM_PROMPT = (
+    "You are a doctor agent for a research mental-health screening setting. "
+    "Your task is to ask the next natural, specific, safe clinician question based only on the visible doctor-patient dialogue history. "
+    "The goal is to gradually gather clinically relevant evidence. Do not diagnose, summarize at length, or reveal any internal labels, symptom slots, evidence units, simulator metadata, or tree structure."
 )
 
 
@@ -93,8 +100,38 @@ def make_user_prompt(history: list[dict[str, str]]) -> str:
     )
 
 
-def source_paths(output_dir: Path) -> tuple[Path, Path]:
-    records = output_dir / "mdd5k_llm_doctor_online_replay_records.jsonl"
+def format_history_for_language(history: list[dict[str, str]], language: str) -> str:
+    if language != "en":
+        return format_history(history)
+    if not history:
+        return "No dialogue history yet."
+    lines: list[str] = []
+    for idx, turn in enumerate(history[-12:], start=1):
+        doctor = str(turn.get("doctor_utterance") or "").strip()
+        patient = str(turn.get("patient_utterance") or "").strip()
+        lines.append(f"{idx}. Doctor: {doctor}")
+        lines.append(f"   Patient: {patient}")
+    return "\n".join(lines)
+
+
+def make_user_prompt_for_language(history: list[dict[str, str]], language: str) -> str:
+    if language != "en":
+        return make_user_prompt(history)
+    return (
+        "Based only on the visible screening dialogue below, generate the next doctor question.\n"
+        "Requirements:\n"
+        "1. Output exactly one next doctor question.\n"
+        "2. Do not diagnose, summarize, or over-reassure.\n"
+        "3. If the patient was vague, avoidant, or low-information, gently follow up on the same topic.\n"
+        "4. If a topic is covered well enough, move to another relevant symptom, risk, or functioning area.\n"
+        "5. Do not mention internal labels, evidence units, symptom slots, or the simulator.\n\n"
+        f"Visible dialogue history:\n{format_history_for_language(history, language)}\n\n"
+        "Next doctor question:"
+    )
+
+
+def source_paths(output_dir: Path, dataset_prefix: str = DEFAULT_DATASET_PREFIX) -> tuple[Path, Path]:
+    records = output_dir / f"{dataset_prefix}_llm_doctor_online_replay_records.jsonl"
     recovery = (
         output_dir
         / "tree_aligned_canonical_recovery"
@@ -136,8 +173,9 @@ def build_examples_for_source(
     min_delta_sufficiency: float | None,
     max_turn_index: int | None,
     require_verified: bool,
+    dataset_prefix: str,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    records_path, recovery_path = source_paths(output_dir)
+    records_path, recovery_path = source_paths(output_dir, dataset_prefix=dataset_prefix)
     if not records_path.exists():
         raise FileNotFoundError(records_path)
     recovery_scores = load_recovery_scores(recovery_path, metric_name)
@@ -188,13 +226,14 @@ def build_examples_for_source(
         for row in rows:
             question = str(row.get("doctor_question") or "").strip()
             patient = str(row.get("patient_response") or "").strip()
+            language = str(row.get("language") or "zh")
             example_id = f"{label}::{row.get('record_id') or scenario_id + '::turn_' + str(row.get('turn_index'))}"
             examples.append(
                 {
                     "id": example_id,
                     "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": make_user_prompt(history)},
+                        {"role": "system", "content": EN_SYSTEM_PROMPT if language == "en" else SYSTEM_PROMPT},
+                        {"role": "user", "content": make_user_prompt_for_language(history, language)},
                         {"role": "assistant", "content": question},
                     ],
                     "metadata": {
@@ -209,6 +248,7 @@ def build_examples_for_source(
                         "turn_index": row.get("turn_index"),
                         "response_type": row.get("response_type"),
                         "patient_realizer_mode": row.get("patient_realizer_mode"),
+                        "language": language,
                         "final_recovery_metric": metric_name,
                         "scenario_final_recovery": final_score,
                         "delta_cumulative_slot_sufficiency": row.get(
@@ -251,6 +291,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--source", action="append", type=parse_source, required=True)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--dataset-prefix", default=DEFAULT_DATASET_PREFIX)
     parser.add_argument("--metric-name", default="keyword_supported_only")
     parser.add_argument("--min-final-score", type=float, default=None)
     parser.add_argument("--min-delta-sufficiency", type=float, default=None)
@@ -277,6 +318,7 @@ def main() -> None:
             min_delta_sufficiency=args.min_delta_sufficiency,
             max_turn_index=args.max_turn_index,
             require_verified=not args.allow_non_verified,
+            dataset_prefix=args.dataset_prefix,
         )
         source_summaries[label] = summary
         for example in examples:
@@ -286,14 +328,15 @@ def main() -> None:
             all_examples.append(example)
 
     train, dev = split_examples(all_examples, dev_ratio=args.dev_ratio, seed=args.seed)
-    train_path = args.output_dir / "mdd5k_final_patient_doctor_sft_train.jsonl"
-    dev_path = args.output_dir / "mdd5k_final_patient_doctor_sft_dev.jsonl"
+    train_path = args.output_dir / f"{args.dataset_prefix}_final_patient_doctor_sft_train.jsonl"
+    dev_path = args.output_dir / f"{args.dataset_prefix}_final_patient_doctor_sft_dev.jsonl"
     write_jsonl(train_path, train)
     write_jsonl(dev_path, dev)
     summary = {
         "sources": {label: str(path) for label, path in args.source},
         "source_summaries": source_summaries,
         "settings": {
+            "dataset_prefix": args.dataset_prefix,
             "metric_name": args.metric_name,
             "min_final_score": args.min_final_score,
             "min_delta_sufficiency": args.min_delta_sufficiency,

@@ -10,6 +10,7 @@ from typing import Any
 BASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_CANONICAL_DIR = BASE_DIR / "outputs_tree_aligned_canonical_evidence_20260629"
 DEFAULT_OUTPUT_DIR = BASE_DIR / "outputs_final_patient_rfv_data"
+DEFAULT_DATASET_PREFIX = "mdd5k"
 
 
 def iter_jsonl(path: Path):
@@ -87,9 +88,10 @@ def load_surface_links(path: Path) -> tuple[dict[tuple[str, str], set[str]], dic
 def select_metric_maps(
     canonical_dir: Path,
     metric_name: str,
+    dataset_prefix: str = DEFAULT_DATASET_PREFIX,
 ) -> tuple[dict[str, set[str]], dict[tuple[str, str], set[str]]]:
-    units_path = canonical_dir / "mdd5k_tree_aligned_canonical_evidence_units.jsonl"
-    links_path = canonical_dir / "mdd5k_surface_to_canonical_evidence_links.jsonl"
+    units_path = canonical_dir / f"{dataset_prefix}_tree_aligned_canonical_evidence_units.jsonl"
+    links_path = canonical_dir / f"{dataset_prefix}_surface_to_canonical_evidence_links.jsonl"
     all_denominator, keyword_denominator = load_canonical_units(units_path)
     all_links, keyword_links = load_surface_links(links_path)
     if metric_name == "all_supported":
@@ -149,8 +151,8 @@ def build_value_model_input(history: list[dict[str, str]], doctor_question: str,
     )
 
 
-def source_records_path(output_dir: Path) -> Path:
-    return output_dir / "mdd5k_llm_doctor_online_replay_records.jsonl"
+def source_records_path(output_dir: Path, dataset_prefix: str = DEFAULT_DATASET_PREFIX) -> Path:
+    return output_dir / f"{dataset_prefix}_llm_doctor_online_replay_records.jsonl"
 
 
 def build_rows_for_source(
@@ -160,11 +162,12 @@ def build_rows_for_source(
     denominator_by_profile: dict[str, set[str]],
     surface_to_canonical: dict[tuple[str, str], set[str]],
     metric_name: str,
+    dataset_prefix: str,
     require_verified: bool,
     max_turn_index: int | None,
     min_final_score: float | None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    records_path = source_records_path(output_dir)
+    records_path = source_records_path(output_dir, dataset_prefix=dataset_prefix)
     if not records_path.exists():
         raise FileNotFoundError(records_path)
 
@@ -324,6 +327,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--source", action="append", type=parse_source, required=True)
     parser.add_argument("--canonical-dir", type=Path, default=DEFAULT_CANONICAL_DIR)
+    parser.add_argument("--dataset-prefix", default=DEFAULT_DATASET_PREFIX)
     parser.add_argument("--metric-name", choices=["keyword_supported_only", "all_supported"], default="keyword_supported_only")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--allow-non-verified", action="store_true")
@@ -334,7 +338,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    denominator_by_profile, surface_to_canonical = select_metric_maps(args.canonical_dir, args.metric_name)
+    denominator_by_profile, surface_to_canonical = select_metric_maps(
+        args.canonical_dir,
+        args.metric_name,
+        dataset_prefix=args.dataset_prefix,
+    )
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     all_rows: list[dict[str, Any]] = []
@@ -347,6 +355,7 @@ def main() -> None:
             denominator_by_profile=denominator_by_profile,
             surface_to_canonical=surface_to_canonical,
             metric_name=args.metric_name,
+            dataset_prefix=args.dataset_prefix,
             require_verified=not args.allow_non_verified,
             max_turn_index=args.max_turn_index,
             min_final_score=args.min_final_score,
@@ -365,6 +374,7 @@ def main() -> None:
         "source_summaries": source_summaries,
         "settings": {
             "canonical_dir": str(args.canonical_dir),
+            "dataset_prefix": args.dataset_prefix,
             "metric_name": args.metric_name,
             "require_verified": not args.allow_non_verified,
             "max_turn_index": args.max_turn_index,

@@ -10,6 +10,7 @@ from typing import Any
 BASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_CANONICAL_DIR = BASE_DIR / "data" / "tree_aligned_canonical_evidence"
 DEFAULT_OUTPUT_DIR = BASE_DIR / "outputs_final_patient_action_value_data"
+DEFAULT_DATASET_PREFIX = "mdd5k"
 
 
 def iter_jsonl(path: Path):
@@ -91,9 +92,10 @@ def load_surface_links(path: Path) -> tuple[dict[tuple[str, str], set[str]], dic
 def select_metric_maps(
     canonical_dir: Path,
     metric_name: str,
+    dataset_prefix: str = DEFAULT_DATASET_PREFIX,
 ) -> tuple[dict[str, set[str]], dict[tuple[str, str], set[str]]]:
-    units_path = canonical_dir / "mdd5k_tree_aligned_canonical_evidence_units.jsonl"
-    links_path = canonical_dir / "mdd5k_surface_to_canonical_evidence_links.jsonl"
+    units_path = canonical_dir / f"{dataset_prefix}_tree_aligned_canonical_evidence_units.jsonl"
+    links_path = canonical_dir / f"{dataset_prefix}_surface_to_canonical_evidence_links.jsonl"
     all_denominator, keyword_denominator = load_canonical_units(units_path)
     all_links, keyword_links = load_surface_links(links_path)
     if metric_name == "all_supported":
@@ -392,6 +394,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--records", type=Path, required=True)
     parser.add_argument("--canonical-dir", type=Path, default=DEFAULT_CANONICAL_DIR)
+    parser.add_argument("--dataset-prefix", default=DEFAULT_DATASET_PREFIX)
     parser.add_argument("--metric-name", choices=["keyword_supported_only", "all_supported"], default="keyword_supported_only")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--allow-non-verified", action="store_true")
@@ -401,7 +404,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    denominator_by_profile, surface_to_canonical = select_metric_maps(args.canonical_dir, args.metric_name)
+    denominator_by_profile, surface_to_canonical = select_metric_maps(
+        args.canonical_dir,
+        args.metric_name,
+        dataset_prefix=args.dataset_prefix,
+    )
     rows, build_summary = build_rows(
         records_path=args.records,
         denominator_by_profile=denominator_by_profile,
@@ -416,6 +423,7 @@ def main() -> None:
         "settings": {
             "records": str(args.records),
             "canonical_dir": str(args.canonical_dir),
+            "dataset_prefix": args.dataset_prefix,
             "metric_name": args.metric_name,
             "require_verified": not args.allow_non_verified,
             "max_branch_records": args.max_branch_records,

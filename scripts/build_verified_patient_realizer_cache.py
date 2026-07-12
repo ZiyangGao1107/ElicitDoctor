@@ -8,6 +8,8 @@ from typing import Any
 
 from _patient_realizer_io import iter_jsonl
 
+DEFAULT_DATASET_PREFIX = "mdd5k"
+
 
 def write_json(path: Path, obj: Any) -> None:
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -47,6 +49,7 @@ def cache_record(
         "source_record_id": request.get("source_record_id"),
         "request_id": original_request_id or request.get("request_id"),
         "scenario_id": request.get("scenario_id"),
+        "language": request.get("language"),
         "profile_id": request.get("profile_id"),
         "case_id": request.get("case_id"),
         "policy_name": request.get("policy_name"),
@@ -83,6 +86,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repair-request-path", type=Path, default=None)
     parser.add_argument("--repair-verification-records", type=Path, default=None)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--dataset-prefix", default=DEFAULT_DATASET_PREFIX)
     parser.add_argument("--include-warned", action="store_true")
     parser.add_argument(
         "--fallback-to-rule",
@@ -165,9 +169,10 @@ def main() -> None:
     suffix = "include_warned" if args.include_warned else "clean_only"
     if args.fallback_to_rule:
         suffix += "_with_rule_fallback"
-    cache_path = args.output_dir / f"mdd5k_verified_patient_response_cache_repair_{suffix}.jsonl"
-    summary_path = args.output_dir / f"mdd5k_verified_patient_response_cache_repair_summary_{suffix}.json"
+    cache_path = args.output_dir / f"{args.dataset_prefix}_verified_patient_response_cache_repair_{suffix}.jsonl"
+    summary_path = args.output_dir / f"{args.dataset_prefix}_verified_patient_response_cache_repair_summary_{suffix}.json"
     summary = {
+        "dataset_prefix": args.dataset_prefix,
         "primary_request_path": str(args.primary_request_path),
         "primary_verification_records": str(args.primary_verification_records),
         "repair_request_path": str(args.repair_request_path) if args.repair_request_path else None,

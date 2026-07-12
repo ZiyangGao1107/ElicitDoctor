@@ -49,6 +49,17 @@ def clean_question(value: Any) -> str:
     return text
 
 
+def clean_question_for_language(value: Any, language: str) -> str:
+    if language != "en":
+        return clean_question(value)
+    text = " ".join(str(value or "").strip().split())
+    if not text:
+        return ""
+    if not text.endswith("?"):
+        text = text.rstrip(".!?) ") + "?"
+    return text
+
+
 def load_by_key(path: Path, key: str) -> dict[str, dict[str, Any]]:
     return {str(row.get(key)): row for row in iter_jsonl(path) if row.get(key) is not None}
 
@@ -112,7 +123,11 @@ def main() -> None:
                 continue
             continue
 
-        question = clean_question(output.get("doctor_question") or output.get("output") or output.get("content"))
+        language = str(state.get("language") or profiles.get(str(state.get("profile_id") or ""), {}).get("language") or "zh")
+        question = clean_question_for_language(
+            output.get("doctor_question") or output.get("output") or output.get("content"),
+            language=language,
+        )
         if not question:
             counters["skip_empty_question"] += 1
             continue
@@ -142,6 +157,7 @@ def main() -> None:
             "candidate_method": request.get("method"),
             "profile_id": profile_id,
             "case_id": state.get("case_id"),
+            "language": language,
             "diagnoses": profiles[profile_id].get("diagnoses"),
             "icd_codes": profiles[profile_id].get("icd_codes"),
             "policy_name": state.get("policy_name"),

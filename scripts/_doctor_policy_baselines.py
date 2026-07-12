@@ -24,7 +24,37 @@ from _patient_controller_base import (
     select_pilot_groups,
 )
 from online_query_interpreter import load_json
-from official_mdd5k_protocol import OfficialTopicState, dynamic_select_official_topics
+try:
+    from official_mdd5k_protocol import OfficialTopicState, dynamic_select_official_topics
+except ImportError:
+    class OfficialTopicState:
+        def __init__(
+            self,
+            *,
+            official_topic: str = "",
+            official_state: str = "",
+            section: str = "",
+            slot: str | None = None,
+        ) -> None:
+            self.official_topic = official_topic
+            self.official_state = official_state
+            self.section = section
+            self.slot = slot
+
+    def dynamic_select_official_topics(
+        tree_type: str,
+        seed: int,
+        include_parse: bool = False,
+    ) -> list[OfficialTopicState]:
+        return [
+            OfficialTopicState(
+                official_topic=slot,
+                official_state=slot,
+                section="fallback_schema_order",
+                slot=slot,
+            )
+            for slot in GLOBAL_CORE_SEQUENCE
+        ]
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]

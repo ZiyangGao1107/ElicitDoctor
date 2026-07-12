@@ -11,6 +11,7 @@ from typing import Any
 BASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_CANONICAL_DIR = BASE_DIR / "outputs_tree_aligned_canonical_evidence_20260629"
 DEFAULT_OUTPUT_DIR = BASE_DIR / "outputs_tree_aligned_canonical_recovery_20260629"
+DEFAULT_DATASET_PREFIX = "mdd5k"
 
 
 def iter_jsonl(path: Path):
@@ -181,12 +182,13 @@ def parse_record_arg(value: str) -> tuple[str, Path]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Analyze recovery of tree-aligned canonical evidence units.")
     parser.add_argument("--canonical-dir", type=Path, default=DEFAULT_CANONICAL_DIR)
+    parser.add_argument("--dataset-prefix", default=DEFAULT_DATASET_PREFIX)
     parser.add_argument("--records", action="append", type=parse_record_arg, required=True)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     args = parser.parse_args()
 
-    canonical_units_path = args.canonical_dir / "mdd5k_tree_aligned_canonical_evidence_units.jsonl"
-    surface_links_path = args.canonical_dir / "mdd5k_surface_to_canonical_evidence_links.jsonl"
+    canonical_units_path = args.canonical_dir / f"{args.dataset_prefix}_tree_aligned_canonical_evidence_units.jsonl"
+    surface_links_path = args.canonical_dir / f"{args.dataset_prefix}_surface_to_canonical_evidence_links.jsonl"
     all_denominator, keyword_denominator = load_canonical_units(canonical_units_path)
     all_links, keyword_links = load_surface_links(surface_links_path)
 

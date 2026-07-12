@@ -13,6 +13,12 @@ MAX_GROUPS="${MAX_GROUPS:-10000}"
 MAX_PROFILES="${MAX_PROFILES:-108}"
 MAX_PER_SLOT="${MAX_PER_SLOT:-999}"
 EVAL_SPLITS="${EVAL_SPLITS:-test}"
+DATASET_PREFIX="${DATASET_PREFIX:-mdd5k}"
+GROUP_DIR="${GROUP_DIR:-}"
+PROFILE_PATH="${PROFILE_PATH:-}"
+SCHEMA_PATH="${SCHEMA_PATH:-}"
+CANONICAL_DIR="${CANONICAL_DIR:-}"
+LANGUAGE="${LANGUAGE:-auto}"
 
 cd "$PHASE_DIR"
 mkdir -p "outputs_${RUN_TAG}" logs
@@ -23,6 +29,7 @@ IFS=',' read -r -a MODELS <<< "$MODELS_CSV"
 
 echo "=== PCV3.2 online final-patient doctor suite start $(date) tag=$RUN_TAG turns=$MAX_TURNS ===" | tee "$SUITE_LOG"
 echo "models=${MODELS[*]}" | tee -a "$SUITE_LOG"
+echo "dataset_prefix=$DATASET_PREFIX language=$LANGUAGE group_dir=$GROUP_DIR profile_path=$PROFILE_PATH schema_path=$SCHEMA_PATH canonical_dir=$CANONICAL_DIR" | tee -a "$SUITE_LOG"
 echo "max_groups=$MAX_GROUPS max_profiles=$MAX_PROFILES max_per_slot=$MAX_PER_SLOT eval_splits=$EVAL_SPLITS" | tee -a "$SUITE_LOG"
 echo "replay_batch_size=$REPLAY_BATCH_SIZE realizer_batch_size=$REALIZER_BATCH_SIZE" | tee -a "$SUITE_LOG"
 
@@ -35,6 +42,12 @@ for MODEL_KEY in "${MODELS[@]}"; do
   MAX_PROFILES="$MAX_PROFILES" \
   MAX_PER_SLOT="$MAX_PER_SLOT" \
   EVAL_SPLITS="$EVAL_SPLITS" \
+  DATASET_PREFIX="$DATASET_PREFIX" \
+  GROUP_DIR="$GROUP_DIR" \
+  PROFILE_PATH="$PROFILE_PATH" \
+  SCHEMA_PATH="$SCHEMA_PATH" \
+  CANONICAL_DIR="$CANONICAL_DIR" \
+  LANGUAGE="$LANGUAGE" \
   REPLAY_BATCH_SIZE="$REPLAY_BATCH_SIZE" \
   REALIZER_BATCH_SIZE="$REALIZER_BATCH_SIZE" \
     bash scripts/run_final_patient_doctor_eval_one.sh "$MODEL_KEY" "$OUT" "$MAX_TURNS" \
@@ -51,6 +64,7 @@ tag = sys.argv[1]
 suite_dir = Path(sys.argv[2])
 models = [item.strip() for item in sys.argv[3:] if item.strip()]
 phase_dir = suite_dir.parent
+dataset_prefix = __import__("os").environ.get("DATASET_PREFIX", "mdd5k")
 
 def score_from_row(row):
     for key in ("mean_tree_aligned_canonical_final_s", "mean_score", "score"):
@@ -62,7 +76,7 @@ summary = []
 for model in models:
     out = phase_dir / f"outputs_{tag}_{model}"
     p = out / "pcv32_keyword_supported_only.json"
-    records_path = out / "mdd5k_llm_doctor_online_replay_records.jsonl"
+    records_path = out / f"{dataset_prefix}_llm_doctor_online_replay_records.jsonl"
     entry = {
         "model": model,
         "output_dir": str(out),

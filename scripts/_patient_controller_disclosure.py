@@ -10,6 +10,7 @@ from typing import Any
 
 from _patient_controller_base import (
     ANAPHORA_CUES,
+    DEFAULT_DATASET_PREFIX,
     DEFAULT_GROUP_DIR,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_PROFILE_PATH,
@@ -545,10 +546,10 @@ def load_profiles(path: Path) -> dict[str, dict[str, Any]]:
     return {record["profile_id"]: record for record in iter_jsonl(path)}
 
 
-def load_group_records(group_dir: Path, splits: list[str]) -> list[dict[str, Any]]:
+def load_group_records(group_dir: Path, splits: list[str], dataset_prefix: str = DEFAULT_DATASET_PREFIX) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for split in splits:
-        path = group_dir / f"mdd5k_profile_grounded_environment_{split}_groups.jsonl"
+        path = group_dir / f"{dataset_prefix}_profile_grounded_environment_{split}_groups.jsonl"
         for record in iter_jsonl(path):
             record = dict(record)
             record["split"] = split

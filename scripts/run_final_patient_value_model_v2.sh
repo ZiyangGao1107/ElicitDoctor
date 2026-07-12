@@ -14,6 +14,7 @@ CANDIDATE_RECORDS="$1"
 RUN_TAG="${2:-final_patient_value_model_v2_$(date +%Y%m%d_%H%M%S)}"
 
 METRIC_NAME="${METRIC_NAME:-keyword_supported_only}"
+DATASET_PREFIX="${DATASET_PREFIX:-mdd5k}"
 CANONICAL_DIR="${CANONICAL_DIR:-$PHASE_DIR/data/tree_aligned_canonical_evidence}"
 TARGET_MODE="${TARGET_MODE:-action_value_total}"
 PAIRWISE_WEIGHT="${PAIRWISE_WEIGHT:-0.5}"
@@ -32,6 +33,9 @@ if [[ ! -f "$CANDIDATE_RECORDS" ]]; then
   echo "Missing candidate rollout records: $CANDIDATE_RECORDS" >&2
   exit 2
 fi
+if [[ "$DATASET_PREFIX" == "daic" && "$CANONICAL_DIR" == "$PHASE_DIR/data/tree_aligned_canonical_evidence" ]]; then
+  CANONICAL_DIR="$PHASE_DIR/data/daic/canonical_evidence"
+fi
 
 export ACTIVE_REASONING_PROJECT="$PROJECT"
 export PYTHONUNBUFFERED=1
@@ -44,6 +48,7 @@ python scripts/build_final_patient_action_value_data.py \
   --records "$CANDIDATE_RECORDS" \
   --output-dir "$ACTION_VALUE_DIR" \
   --canonical-dir "$CANONICAL_DIR" \
+  --dataset-prefix "$DATASET_PREFIX" \
   --metric-name "$METRIC_NAME"
 
 python scripts/train_final_patient_rfv_value_model.py \

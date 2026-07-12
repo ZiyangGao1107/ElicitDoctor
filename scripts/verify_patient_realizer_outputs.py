@@ -23,6 +23,7 @@ DEFAULT_OUTPUT_PATH = (
     / "llm_patient_realizer_outputs.jsonl"
 )
 DEFAULT_REPORT_DIR = BASE_DIR / "outputs_llm_patient_realizer_v3_1"
+DEFAULT_DATASET_PREFIX = "mdd5k"
 
 REFUSAL_OR_VAGUE_CUES = (
     "不想细说",
@@ -66,6 +67,42 @@ TARGET_TOPIC_KEYWORDS = {
     "school_or_study_status": ("学习", "上学", "学校", "成绩", "作业"),
     "sleep": ("睡眠", "睡不着", "失眠", "入睡", "早醒", "做梦"),
     "suicide_or_self_harm": ("自杀", "自残", "伤害自己", "轻生", "活着没意思", "结束生命"),
+}
+
+
+EN_REFUSAL_OR_VAGUE_CUES = (
+    "do not really want",
+    "don't really want",
+    "do not want to talk",
+    "don't want to talk",
+    "not sure how to explain",
+    "hard to explain",
+    "hard to say",
+    "come back to that",
+    "talk about that later",
+    "rather not",
+    "not ready",
+    "difficult to talk about",
+)
+
+EN_TARGET_TOPIC_KEYWORDS = {
+    "anhedonia": ("interest", "enjoy", "pleasure", "fun", "motivation"),
+    "hopelessness_or_crying": ("hopeless", "sad", "down", "depressed", "cry", "tears"),
+    "sleep": ("sleep", "insomnia", "wake", "awake", "nightmare", "tired"),
+    "fatigue": ("tired", "energy", "fatigue", "exhausted", "drained"),
+    "appetite_loss": ("appetite", "eat", "eating", "food", "weight"),
+    "self_worth": ("failure", "worthless", "guilt", "fault", "disappointed"),
+    "attention_decline": ("concentrate", "focus", "attention", "distracted"),
+    "psychomotor_change": ("slow", "slowed", "restless", "moving", "fidget"),
+    "suicide_or_self_harm": ("suicide", "self-harm", "hurt myself", "end my life", "die"),
+    "anxiety_or_worry": ("anxious", "worry", "panic", "nervous", "fear"),
+    "trauma_or_ptsd": ("trauma", "ptsd", "flashback", "nightmare"),
+    "substance_use": ("alcohol", "drink", "drug", "substance", "weed"),
+    "work_status": ("work", "job", "school", "class", "performance"),
+    "social_support": ("family", "friend", "support", "alone", "relationship"),
+    "treatment_history": ("therapy", "counseling", "medication", "doctor", "treatment"),
+    "family_psychiatric_history": ("family", "mother", "father", "parent", "depression"),
+    "current_stressors": ("stress", "stressed", "problem", "pressure", "difficult"),
 }
 
 
@@ -170,14 +207,20 @@ def unit_scores(response: str, units: list[dict[str, Any]]) -> list[dict[str, An
 
 
 def has_refusal_or_vague_cue(response: str) -> bool:
-    return any(cue in response for cue in REFUSAL_OR_VAGUE_CUES)
+    response_lower = clean_text(response).lower()
+    return any(cue in response for cue in REFUSAL_OR_VAGUE_CUES) or any(
+        cue in response_lower for cue in EN_REFUSAL_OR_VAGUE_CUES
+    )
 
 
 def topic_specific_terms(response: str, target_tree_node: str | None) -> list[str]:
     if not target_tree_node:
         return []
-    keywords = TARGET_TOPIC_KEYWORDS.get(str(target_tree_node), ())
-    return [keyword for keyword in keywords if keyword in response]
+    keywords = tuple(TARGET_TOPIC_KEYWORDS.get(str(target_tree_node), ())) + tuple(
+        EN_TARGET_TOPIC_KEYWORDS.get(str(target_tree_node), ())
+    )
+    response_lower = clean_text(response).lower()
+    return [keyword for keyword in keywords if keyword in response or keyword in response_lower]
 
 
 def duplicate_phrase_warnings(response: str) -> list[str]:
@@ -320,6 +363,7 @@ def verify_one(
         "request_id": request.get("request_id"),
         "source_record_id": request.get("source_record_id"),
         "scenario_id": request.get("scenario_id"),
+        "language": request.get("language"),
         "policy_name": request.get("policy_name"),
         "base_severity": severity,
         "target_tree_node": request.get("target_tree_node"),
@@ -478,6 +522,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--request-path", type=Path, default=DEFAULT_REQUEST_PATH)
     parser.add_argument("--output-path", type=Path, default=DEFAULT_OUTPUT_PATH)
     parser.add_argument("--report-dir", type=Path, default=DEFAULT_REPORT_DIR)
+    parser.add_argument("--dataset-prefix", default=DEFAULT_DATASET_PREFIX)
     parser.add_argument("--use-source-rule-based", action="store_true", help="Verify deterministic source responses instead of LLM outputs.")
     parser.add_argument("--strict-readability", action="store_true", help="Treat readability warnings as rejection.")
     parser.add_argument("--leak-threshold", type=float, default=0.72)
@@ -517,8 +562,8 @@ def main() -> None:
         request_path=args.request_path,
         output_path=None if args.use_source_rule_based else args.output_path,
     )
-    record_path = args.report_dir / f"mdd5k_patient_realizer_verification_records_{source_mode}.jsonl"
-    summary_path = args.report_dir / f"mdd5k_patient_realizer_verification_summary_{source_mode}.json"
+    record_path = args.report_dir / f"{args.dataset_prefix}_patient_realizer_verification_records_{source_mode}.jsonl"
+    summary_path = args.report_dir / f"{args.dataset_prefix}_patient_realizer_verification_summary_{source_mode}.json"
     report_path = args.report_dir / f"LLM_PATIENT_REALIZER_VERIFICATION_REPORT_{source_mode}.md"
     write_jsonl(record_path, records)
     write_json(summary_path, summary)

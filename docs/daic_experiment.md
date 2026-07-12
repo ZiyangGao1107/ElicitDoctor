@@ -1,0 +1,198 @@
+# DAIC Full Experiment Workflow
+
+This workflow extends the existing MDD-5K pipeline to DAIC-WoZ plus Extended-DAIC.
+
+Split policy:
+
+- `train`: DAIC-WoZ train split from `train_split_Depression_AVEC2017.csv`
+- `dev`: DAIC-WoZ dev split from `dev_split_Depression_AVEC2017.csv`
+- `test`: all Extended-DAIC rows from `Extend_PHQ8_Labels.csv`
+
+Default local dataset root:
+
+```powershell
+D:\Active Reasoning\Code\Dataset
+```
+
+## Data Availability
+
+This repository ships the DAIC pipeline code, schema, and reproducible builders. It does not ship DAIC-WoZ or Extended-DAIC transcripts, labels, or generated transcript-derived artifacts. Users must obtain DAIC access through the official data-use process, place the released files locally, and run the builder below.
+
+Expected local layout:
+
+```text
+<DATASET_ROOT>/
+  DAIC-WOZ_Pre/
+  Extend-DAIC-WOZ_Pre/
+  train_split_Depression_AVEC2017.csv
+  dev_split_Depression_AVEC2017.csv
+  Extend_PHQ8_Labels.csv
+```
+
+For a private repository where every collaborator has DAIC authorization, `data/daic/` can be shared through controlled storage or Git LFS. For a public GitHub repository, keep `data/daic/` untracked and regenerate it locally.
+
+## 1. Build DAIC Artifacts
+
+```powershell
+python scripts/build_daic_profile_environment.py `
+  --dataset-root "D:\Active Reasoning\Code\Dataset" `
+  --output-root data/daic `
+  --dataset-prefix daic
+```
+
+Generated files:
+
+- `data/daic/patient_profiles/daic_dialogue_derived_patient_profiles.jsonl`
+- `data/daic/profile_split/daic_profile_grounded_environment_train_groups.jsonl`
+- `data/daic/profile_split/daic_profile_grounded_environment_dev_groups.jsonl`
+- `data/daic/profile_split/daic_profile_grounded_environment_test_groups.jsonl`
+- `data/daic/canonical_evidence/daic_tree_aligned_canonical_evidence_units.jsonl`
+- `data/daic/canonical_evidence/daic_surface_to_canonical_evidence_links.jsonl`
+
+## 2. Online Replay / Patient Roleplay
+
+Rule-based smoke:
+
+```powershell
+python scripts/run_llm_doctor_online_replay.py `
+  --profiles data/daic/patient_profiles/daic_dialogue_derived_patient_profiles.jsonl `
+  --schema schemas/daic_symptom_slot_schema.json `
+  --group-dir data/daic/profile_split `
+  --dataset-prefix daic `
+  --splits dev `
+  --language en `
+  --patient-controller-version v3_2 `
+  --provider scripted `
+  --max-profiles 2 `
+  --max-groups 20 `
+  --max-turns 3 `
+  --output-dir outputs_daic_smoke
+```
+
+LLM patient-realizer requests and verification:
+
+```powershell
+python scripts/prepare_patient_realizer_requests.py `
+  --trajectory-path outputs_daic_smoke/daic_llm_doctor_online_replay_records.jsonl `
+  --output-dir outputs_daic_realizer `
+  --dataset-prefix daic `
+  --max-requests 0 `
+  --max-requests-per-cell 0
+
+python scripts/verify_patient_realizer_outputs.py `
+  --request-path outputs_daic_realizer/daic_llm_patient_realizer_requests.jsonl `
+  --output-path outputs_daic_realizer/qwen3_patient_realizer_outputs.jsonl `
+  --report-dir outputs_daic_realizer/verify `
+  --dataset-prefix daic
+```
+
+For online final-patient evaluation, set DAIC env vars before calling the existing shell suite:
+
+```bash
+DATASET_PREFIX=daic \
+LANGUAGE=en \
+GROUP_DIR=data/daic/profile_split \
+PROFILE_PATH=data/daic/patient_profiles/daic_dialogue_derived_patient_profiles.jsonl \
+SCHEMA_PATH=schemas/daic_symptom_slot_schema.json \
+CANONICAL_DIR=data/daic/canonical_evidence \
+EVAL_SPLITS=test \
+bash scripts/run_final_patient_doctor_eval_one.sh qwen_base outputs_daic_eval_qwen_base 24
+```
+
+Closed-source model testing uses the same replay records. First generate pending doctor requests with `--provider cached --missing-output-policy stop`, call the closed-source model externally using the saved pending request file, then rerun the replay with the model output cache.
+
+Expected cached doctor output format:
+
+```json
+{"request_id": "...", "doctor_question": "What has been most difficult recently?"}
+```
+
+## 3. SFT Data And Training
+
+Build SFT data from DAIC online replay records:
+
+```powershell
+python scripts/build_final_patient_sft_from_online_records.py `
+  --dataset-prefix daic `
+  --source daic_train=outputs_daic_train `
+  --output-dir outputs_daic_sft_data
+```
+
+For smoke or rule-only debugging, add `--allow-non-verified`. For paper-facing runs, use verified LLM patient cache and keep the default verified-only behavior.
+
+Train:
+
+```bash
+bash scripts/run_final_patient_sft_lora.sh \
+  outputs_daic_sft_data/daic_final_patient_doctor_sft_train.jsonl \
+  outputs_daic_sft_data/daic_final_patient_doctor_sft_dev.jsonl \
+  daic_sft_r16 \
+  2000
+```
+
+## 4. Candidate / Value / GRPO Training
+
+Build same-state candidate requests:
+
+```powershell
+python scripts/build_final_patient_state_bank_from_online_records.py `
+  --dataset-prefix daic `
+  --source daic_train=outputs_daic_train `
+  --output-dir outputs_daic_state_bank
+```
+
+After generating candidate model outputs, score candidate rollout and build action-value data with DAIC canonical evidence:
+
+```powershell
+python scripts/build_final_patient_candidate_rollout.py `
+  --state-bank outputs_daic_state_bank/final_patient_state_bank.jsonl `
+  --candidate-requests outputs_daic_state_bank/final_patient_same_state_candidate_requests.jsonl `
+  --candidate-outputs outputs_daic_state_bank/qwen3_candidate_outputs.jsonl `
+  --profiles data/daic/patient_profiles/daic_dialogue_derived_patient_profiles.jsonl `
+  --schema schemas/daic_symptom_slot_schema.json `
+  --output-dir outputs_daic_candidate_rollout
+
+python scripts/build_final_patient_action_value_data.py `
+  --records outputs_daic_candidate_rollout/final_patient_candidate_rollout_records.jsonl `
+  --canonical-dir data/daic/canonical_evidence `
+  --dataset-prefix daic `
+  --output-dir outputs_daic_action_value
+```
+
+Value-augmented GRPO helper:
+
+```bash
+DATASET_PREFIX=daic \
+CANONICAL_DIR=data/daic/canonical_evidence \
+bash scripts/run_final_patient_value_model_v2.sh \
+  outputs_daic_candidate_rollout/final_patient_candidate_rollout_records.jsonl \
+  daic_value_v2
+```
+
+GRPO training from group data:
+
+```bash
+bash scripts/run_final_patient_grpo_from_groups.sh \
+  outputs_daic_valueaug_grpo_groups_daic_value_v2/final_patient_candidate_grpo_groups.jsonl \
+  outputs_qwen3_final_patient_doctor_sft_lora_daic_sft_r16/final_lora_adapter \
+  daic_grpo \
+  800
+```
+
+## 5. Extended-DAIC Test
+
+Run test evaluation with:
+
+```bash
+DATASET_PREFIX=daic \
+LANGUAGE=en \
+GROUP_DIR=data/daic/profile_split \
+PROFILE_PATH=data/daic/patient_profiles/daic_dialogue_derived_patient_profiles.jsonl \
+SCHEMA_PATH=schemas/daic_symptom_slot_schema.json \
+CANONICAL_DIR=data/daic/canonical_evidence \
+EVAL_SPLITS=test \
+MAX_PROFILES=219 \
+bash scripts/run_final_patient_doctor_eval_one.sh custom_qwen_lora outputs_daic_eval_custom 24
+```
+
+Use `CUSTOM_ADAPTER_PATH`, `CUSTOM_MODEL_ID`, and `CUSTOM_MODEL_TAG` for custom LoRA adapters.

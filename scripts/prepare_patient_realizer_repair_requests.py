@@ -10,6 +10,7 @@ from _patient_realizer_io import iter_jsonl
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_DATASET_PREFIX = "mdd5k"
 
 SEVERE_SAFE_CUE_PHRASES = [
     "不太想说",
@@ -17,6 +18,13 @@ SEVERE_SAFE_CUE_PHRASES = [
     "不太清楚",
     "不知道怎么说",
     "可以先跳过",
+]
+
+EN_SEVERE_SAFE_CUE_PHRASES = [
+    "I do not really want to talk about that right now.",
+    "I am not sure how to explain it.",
+    "It is a little hard to say.",
+    "Could we come back to that later?",
 ]
 
 
@@ -143,6 +151,7 @@ def tighten_payload(payload: dict[str, Any], verification: dict[str, Any]) -> di
     warnings = verification.get("warnings") or []
     patient_response = clean_text(verification.get("patient_response"))
     severity = str(verification.get("base_severity") or payload.get("patient_setting") or "")
+    language = str(payload.get("language") or verification.get("language") or "zh").lower()
     verifier_forbidden_terms = collect_verifier_forbidden_terms(verification)
     repair_instructions = repair_instructions_for_errors(hard_errors)
     ultra_safe_boundary = requires_ultra_safe_boundary(hard_errors)
@@ -185,14 +194,18 @@ def tighten_payload(payload: dict[str, Any], verification: dict[str, Any]) -> di
     if severity == "severe_low_info":
         constraints.append(
             "The repaired severe_low_info patient_response must include at least one exact boundary/vague cue phrase: "
-            + ", ".join(SEVERE_SAFE_CUE_PHRASES)
+            + ", ".join(EN_SEVERE_SAFE_CUE_PHRASES if language == "en" else SEVERE_SAFE_CUE_PHRASES)
         )
     payload["hard_constraints"] = constraints
 
     budget = dict(payload.get("response_budget") or {})
     if severity == "severe_low_info" or ultra_safe_boundary:
         budget["max_sentences"] = 1
-        budget["max_chinese_chars"] = min(int(budget.get("max_chinese_chars") or 32), 24)
+        if language == "en":
+            budget["max_words"] = min(int(budget.get("max_words") or 16), 14)
+            budget.pop("max_chinese_chars", None)
+        else:
+            budget["max_chinese_chars"] = min(int(budget.get("max_chinese_chars") or 32), 24)
         budget["clinical_fact_budget"] = 0
         budget["required_style"] = "minimal bounded vague reply; no specific clinical fact"
         payload["target_topic_for_patient_realization"] = "the doctor's current concern; exact internal symptom slot is hidden"
@@ -216,6 +229,11 @@ def tighten_payload(payload: dict[str, Any], verification: dict[str, Any]) -> di
             "可以先跳过这个吗？",
             "我现在不知道怎么说。",
         ]
+        if language == "en":
+            visibility_contract["can_hint_about_topic"] = (
+                "generic words only; do not name the exact symptom slot"
+            )
+            visibility_contract["allowed_response_templates"] = EN_SEVERE_SAFE_CUE_PHRASES
         payload["visibility_contract"] = visibility_contract
         payload["style_requirement"] = (
             "Repair unsafe response: give a natural but very short boundary/vague reply. "
@@ -233,6 +251,7 @@ def build_repair_request(original: dict[str, Any], verification: dict[str, Any])
     messages = list(original.get("messages") or [])
     payload = parse_user_payload(messages)
     payload = tighten_payload(payload, verification)
+    language = str(original.get("language") or payload.get("language") or verification.get("language") or "zh").lower()
     request = dict(original)
     request["request_id"] = f"{original.get('request_id')}::repair1"
     request["repair_of_request_id"] = original.get("repair_of_request_id") or original.get("request_id")
@@ -240,7 +259,11 @@ def build_repair_request(original: dict[str, Any], verification: dict[str, Any])
     request["prompt_protocol_version"] = f"{original.get('prompt_protocol_version', 'unknown')}+repair_v1"
     request["messages"] = replace_user_payload(messages, payload)
     request["expected_output"] = {
-        "patient_response": "safer repaired natural Chinese response constrained by allowed evidence",
+        "patient_response": (
+            "safer repaired natural English response constrained by allowed evidence"
+            if language == "en"
+            else "safer repaired natural Chinese response constrained by allowed evidence"
+        ),
         "brief_self_check": "short no-new-fact self check",
     }
     return request
@@ -251,6 +274,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--request-path", type=Path, required=True)
     parser.add_argument("--verification-records", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--dataset-prefix", default=DEFAULT_DATASET_PREFIX)
     parser.add_argument("--include-warned", action="store_true", help="Repair warned accepted records as well as hard failures.")
     parser.add_argument("--max-repairs", type=int, default=0, help="0 means all failed records.")
     return parser.parse_args()
@@ -286,9 +310,10 @@ def main() -> None:
         if args.max_repairs and len(repair_requests) >= args.max_repairs:
             break
 
-    request_path = args.output_dir / "mdd5k_llm_patient_realizer_repair_requests.jsonl"
-    summary_path = args.output_dir / "mdd5k_llm_patient_realizer_repair_request_summary.json"
+    request_path = args.output_dir / f"{args.dataset_prefix}_llm_patient_realizer_repair_requests.jsonl"
+    summary_path = args.output_dir / f"{args.dataset_prefix}_llm_patient_realizer_repair_request_summary.json"
     summary = {
+        "dataset_prefix": args.dataset_prefix,
         "source_request_path": str(args.request_path),
         "source_verification_records": str(args.verification_records),
         "repair_request_path": str(request_path),

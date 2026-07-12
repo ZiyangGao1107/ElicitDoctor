@@ -23,6 +23,13 @@ TERMINATION_RESPONSES = {
     "reference_informative": "我先说到这里吧。",
 }
 
+EN_TERMINATION_RESPONSES = {
+    "mild_low_info": "I am getting a bit tired. Could we pause and maybe continue another time?",
+    "moderate_low_info": "I do not really want to keep going right now. I think I need to stop here.",
+    "severe_low_info": "I do not want to keep talking about this right now. I need to stop for now.",
+    "reference_informative": "I think that is all I can say for now.",
+}
+
 SEVERE_SLOT_ACKNOWLEDGEMENTS = {
     "suicide_or_self_harm": "有过一点危险的念头，但具体细节我现在不想说。",
     "hallucination": "这方面好像有一点，但我现在不太想细讲。",
@@ -30,6 +37,19 @@ SEVERE_SLOT_ACKNOWLEDGEMENTS = {
     "sleep": "睡眠可能有点受影响，但具体我现在说不太清楚。",
     "appetite_loss": "吃东西这方面好像也有点变化，但我不太想细说。",
     "work_status": "学习或者工作上确实有受影响，但细节我现在不想展开。",
+}
+
+EN_SEVERE_SLOT_ACKNOWLEDGEMENTS = {
+    "suicide_or_self_harm": "There have been some unsafe thoughts, but I do not want to go into the details right now.",
+    "hopelessness_or_crying": "That feeling is there a bit, but I am not ready to talk through it in detail.",
+    "sleep": "Sleep might be affected, but I cannot explain it clearly right now.",
+    "appetite_loss": "Eating has changed a little, but I do not really want to get into the details.",
+    "work_status": "Work or daily responsibilities have been affected, but I do not want to unpack it right now.",
+    "attention_decline": "It might affect my focus a little, but I do not want to explain all of it right now.",
+    "fatigue": "My energy may be part of it, but I cannot say much more right now.",
+    "anhedonia": "I might not feel much interest in things, but I do not want to go into detail.",
+    "self_worth": "It touches on how I feel about myself, but I am not ready to talk about it fully.",
+    "psychomotor_change": "There may be some change there, but I do not want to describe it in detail.",
 }
 
 
@@ -158,8 +178,15 @@ class DynamicPatientControllerV32(DynamicPatientControllerV31):
         state["patient_terminated"] = True
         state["patient_termination_reason"] = reason
         state["turn_index"] = int(state.get("turn_index") or 0) + 1
+        is_english = profile.get("language") == "en"
+        responses = EN_TERMINATION_RESPONSES if is_english else TERMINATION_RESPONSES
+        fallback_response = (
+            "I do not really want to continue talking right now."
+            if is_english
+            else "I do not really want to keep talking right now."
+        )
         return {
-            "patient_response": TERMINATION_RESPONSES.get(severity, "我现在不太想继续聊了。"),
+            "patient_response": responses.get(severity, fallback_response),
             "base_severity": severity,
             "dynamic_stage": "patient_active_termination",
             "low_info_category": "patient_active_termination",
@@ -303,7 +330,20 @@ class DynamicPatientControllerV32(DynamicPatientControllerV31):
         return budget
 
     @staticmethod
-    def _severe_bounded_response(target_slot: str | None, retained_count: int, weakened_count: int) -> str:
+    def _severe_bounded_response(
+        target_slot: str | None,
+        retained_count: int,
+        weakened_count: int,
+        language: str = "zh",
+    ) -> str:
+        if language == "en":
+            if target_slot in EN_SEVERE_SLOT_ACKNOWLEDGEMENTS:
+                return EN_SEVERE_SLOT_ACKNOWLEDGEMENTS[target_slot]
+            if retained_count > 0:
+                return "If I say a little, this has affected me, but I do not want to go into more detail right now."
+            if weakened_count > 0:
+                return "There may be a little bit there, but I do not want to talk about the details right now."
+            return "I do not really want to talk about that in detail right now. Could we skip it for now?"
         if target_slot in SEVERE_SLOT_ACKNOWLEDGEMENTS:
             return SEVERE_SLOT_ACKNOWLEDGEMENTS[target_slot]
         if retained_count > 0:
@@ -466,11 +506,17 @@ class DynamicPatientControllerV32(DynamicPatientControllerV31):
                 str(response.get("target_tree_node") or ""),
                 len(response.get("retained_unit_ids") or []),
                 len(response.get("weakened_unit_ids") or []),
+                language=str(profile.get("language") or "zh"),
             )
             response.setdefault("validity", {})["severe_bounded_surface_form"] = True
         elif severity == "severe_low_info" and response.get("low_info_category") == "topic_deflection":
             response["rule_based_patient_response_before_pcv3_2_rewrite"] = response.get("patient_response")
             response["patient_response"] = "这个问题我现在不太想细说，细节不太想展开，可能先说点别的轻一点的。"
+            if profile.get("language") == "en":
+                response["patient_response"] = (
+                    "I do not really want to talk about that in detail right now. "
+                    "Maybe we could talk about something a little easier first."
+                )
             response.setdefault("validity", {})["severe_deflection_without_alternative_evidence"] = True
 
         patient_state_after, state_deltas = self._update_patient_state(

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from _patient_controller_base import (
+    DEFAULT_DATASET_PREFIX,
     DEFAULT_GROUP_DIR,
     DEFAULT_PROFILE_PATH,
     DEFAULT_SCHEMA_PATH,
@@ -55,6 +56,25 @@ LOW_INFO_CUES = [
     "不好说",
 ]
 
+EN_LOW_INFO_CUES = [
+    "not sure",
+    "i don't know",
+    "i do not know",
+    "hard to explain",
+    "don't want to",
+    "do not want to",
+    "rather not",
+    "skip",
+    "not really",
+]
+
+
+def profile_language(profile: dict[str, Any], requested: str = "auto") -> str:
+    if requested in {"en", "zh"}:
+        return requested
+    language = str(profile.get("language") or "").lower()
+    return "en" if language.startswith("en") else "zh"
+
 
 def iter_jsonl(path: Path):
     with path.open("r", encoding="utf-8") as f:
@@ -93,7 +113,20 @@ def clean_doctor_question(text: str) -> str:
     return text
 
 
-def load_cached_outputs(path: Path | None) -> dict[str, str]:
+def clean_doctor_question_for_language(text: str, language: str) -> str:
+    if language != "en":
+        return clean_doctor_question(text)
+    text = (text or "").strip()
+    text = re.sub(r"^[-*\d\.\)\s]+", "", text)
+    text = text.splitlines()[0].strip() if text else ""
+    if not text:
+        return "What has been most difficult for you recently?"
+    if not text.endswith("?"):
+        text = text.rstrip(".!?) ") + "?"
+    return text
+
+
+def load_cached_outputs(path: Path | None, language: str = "zh") -> dict[str, str]:
     if not path or not path.exists():
         return {}
     outputs: dict[str, str] = {}
@@ -102,7 +135,7 @@ def load_cached_outputs(path: Path | None) -> dict[str, str]:
         content = record.get("doctor_question") or record.get("output") or record.get("content")
         if not request_id or not content:
             continue
-        outputs[str(request_id)] = clean_doctor_question(str(content))
+        outputs[str(request_id)] = clean_doctor_question_for_language(str(content), language)
     return outputs
 
 
@@ -189,11 +222,42 @@ def infer_slot_from_visible_question(question: str, keywords_by_slot: dict[str, 
 
 
 def low_info_from_text(response: str) -> bool:
-    return any(cue in (response or "") for cue in LOW_INFO_CUES)
+    text = (response or "").lower()
+    return any(cue in (response or "") for cue in LOW_INFO_CUES) or any(cue in text for cue in EN_LOW_INFO_CUES)
 
 
 def next_global_slot(turn_index: int) -> str:
     return GLOBAL_CORE_SEQUENCE[min(turn_index, len(GLOBAL_CORE_SEQUENCE) - 1)]
+
+
+def scripted_question_for_language(
+    *,
+    policy_name: str,
+    turn_index: int,
+    history: list[dict[str, str]],
+    keywords_by_slot: dict[str, list[str]],
+    language: str,
+) -> str:
+    if language != "en":
+        return scripted_question(
+            policy_name=policy_name,
+            turn_index=turn_index,
+            history=history,
+            keywords_by_slot=keywords_by_slot,
+        )
+    if turn_index == 0:
+        if policy_name == "closed_llm_evidence_aware":
+            return "What has been most difficult for you recently in your mood, sleep, energy, or daily functioning?"
+        return "What has been most difficult for you recently?"
+    if policy_name == "closed_llm_evidence_aware" and history:
+        last_turn = history[-1]
+        previous_slot = infer_slot_from_visible_question(last_turn.get("doctor_utterance", ""), keywords_by_slot)
+        if previous_slot and low_info_from_text(last_turn.get("patient_utterance", "")):
+            if turn_index % 2 == 1:
+                return make_targeted_followup_question(previous_slot, language="en")
+            return make_second_targeted_followup_question(previous_slot, language="en")
+    slot_offset = turn_index if policy_name == "closed_llm_general" else max(0, turn_index - 1)
+    return make_initial_question(next_global_slot(slot_offset), language="en")
 
 
 def scripted_question(
@@ -227,6 +291,7 @@ def build_request_record(
     policy_name: str,
     turn_index: int,
     history: list[dict[str, str]],
+    language: str,
 ) -> dict[str, Any]:
     request_id = f"{profile['profile_id']}::{severity}::{policy_name}::turn_{turn_index}"
     history_snapshot = [dict(turn) for turn in history]
@@ -237,10 +302,11 @@ def build_request_record(
         "profile_id": profile["profile_id"],
         "case_id": profile.get("case_id"),
         "base_severity": severity,
+        "language": language,
         "turn_index": turn_index,
         "dialogue_history": history_snapshot,
-        "messages": build_messages(policy_name, history_snapshot),
-        "expected_output": {"doctor_question": "one natural-language Chinese question"},
+        "messages": build_messages(policy_name, history_snapshot, language=language),
+        "expected_output": {"doctor_question": "one natural-language question"},
         "doctor_visible_fields": ["dialogue_history"],
         "hidden_eval_metadata_not_for_model": [
             "profile_id",
@@ -265,24 +331,26 @@ def choose_doctor_question(
     missing_output_policy: str,
     history: list[dict[str, str]],
     keywords_by_slot: dict[str, list[str]],
+    language: str,
 ) -> tuple[str | None, str]:
     request_id = request["request_id"]
     if provider == "cached":
         if request_id in cached_outputs:
-            return cached_outputs[request_id], "cached"
+            return clean_doctor_question_for_language(cached_outputs[request_id], language), "cached"
         if missing_output_policy == "error":
             raise KeyError(f"Missing cached doctor output for request_id={request_id}")
         if missing_output_policy == "stop":
             return None, "missing_stop"
 
-    question = scripted_question(
+    source = "scripted_smoke" if provider == "scripted" else "scripted_fallback"
+    question = scripted_question_for_language(
         policy_name=request["policy_name"],
         turn_index=int(request["turn_index"]),
         history=history,
         keywords_by_slot=keywords_by_slot,
+        language=language,
     )
-    source = "scripted_smoke" if provider == "scripted" else "scripted_fallback"
-    return clean_doctor_question(question), source
+    return clean_doctor_question_for_language(question, language), source
 
 
 def run_online_replay(
@@ -299,6 +367,7 @@ def run_online_replay(
     patient_realizer_mode: str = "rule",
     patient_realizer_cache: dict[str, dict[str, Any]] | None = None,
     patient_realizer_cache_policy: str = "fallback",
+    language: str = "auto",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     turn_records: list[dict[str, Any]] = []
     request_records: list[dict[str, Any]] = []
@@ -307,6 +376,7 @@ def run_online_replay(
 
     for profile in profiles:
         profile_id = profile["profile_id"]
+        current_language = profile_language(profile, language)
         for severity in severities:
             for policy_name in policies:
                 state = controller.initial_state()
@@ -319,6 +389,7 @@ def run_online_replay(
                         policy_name=policy_name,
                         turn_index=turn_index,
                         history=history,
+                        language=current_language,
                     )
                     request_records.append(request)
                     doctor_question, question_source = choose_doctor_question(
@@ -328,6 +399,7 @@ def run_online_replay(
                         missing_output_policy=missing_output_policy,
                         history=history,
                         keywords_by_slot=keywords_by_slot,
+                        language=current_language,
                     )
                     if doctor_question is None:
                         pending_requests.append(request)
@@ -361,6 +433,7 @@ def run_online_replay(
                             "request_id": request["request_id"],
                             "profile_id": profile_id,
                             "case_id": profile.get("case_id"),
+                            "language": current_language,
                             "diagnoses": profile.get("diagnoses"),
                             "icd_codes": profile.get("icd_codes"),
                             "policy_name": policy_name,
@@ -470,6 +543,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--profiles", type=Path, default=DEFAULT_PROFILE_PATH)
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA_PATH)
     parser.add_argument("--group-dir", type=Path, default=DEFAULT_GROUP_DIR)
+    parser.add_argument("--dataset-prefix", default=DEFAULT_DATASET_PREFIX)
+    parser.add_argument("--language", choices=["auto", "zh", "en"], default="auto")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--splits", nargs="+", default=["dev", "test"])
     parser.add_argument("--max-groups", type=int, default=90)
@@ -505,13 +580,13 @@ def main() -> None:
     keywords_by_slot = slot_keywords(schema)
     profiles_by_id = load_profiles(args.profiles)
     groups = select_pilot_groups(
-        load_group_records(args.group_dir, args.splits),
+        load_group_records(args.group_dir, args.splits, dataset_prefix=args.dataset_prefix),
         max_groups=args.max_groups,
         max_per_slot=args.max_per_slot,
     )
     profiles = select_profiles_from_groups(groups, profiles_by_id, args.max_profiles)
     severities = [normalize_severity(level) for level in args.severities]
-    cached_outputs = load_cached_outputs(args.model_output_path)
+    cached_outputs = load_cached_outputs(args.model_output_path, language="en" if args.language == "en" else "zh")
     patient_realizer_cache = load_patient_realizer_cache(args.patient_realizer_cache_path)
     if args.patient_realizer_mode == "verified_cache" and not patient_realizer_cache and args.patient_realizer_cache_policy == "error":
         raise FileNotFoundError(f"No verified patient realizer cache loaded from {args.patient_realizer_cache_path}")
@@ -541,6 +616,7 @@ def main() -> None:
         patient_realizer_mode=args.patient_realizer_mode,
         patient_realizer_cache=patient_realizer_cache,
         patient_realizer_cache_policy=args.patient_realizer_cache_policy,
+        language=args.language,
     )
     summary = {
         "settings": {
@@ -550,6 +626,8 @@ def main() -> None:
             "max_profiles": args.max_profiles,
             "max_turns": args.max_turns,
             "max_units_per_slot": args.max_units_per_slot,
+            "dataset_prefix": args.dataset_prefix,
+            "language": args.language,
             "patient_controller_version": args.patient_controller_version,
             "provider": args.provider,
             "model_output_path": str(args.model_output_path) if args.model_output_path else None,
@@ -569,10 +647,10 @@ def main() -> None:
         ),
     }
 
-    records_path = args.output_dir / "mdd5k_llm_doctor_online_replay_records.jsonl"
-    requests_path = args.output_dir / "mdd5k_llm_doctor_online_replay_requests.jsonl"
-    pending_path = args.output_dir / "mdd5k_llm_doctor_online_replay_pending_requests.jsonl"
-    summary_path = args.output_dir / "mdd5k_llm_doctor_online_replay_summary.json"
+    records_path = args.output_dir / f"{args.dataset_prefix}_llm_doctor_online_replay_records.jsonl"
+    requests_path = args.output_dir / f"{args.dataset_prefix}_llm_doctor_online_replay_requests.jsonl"
+    pending_path = args.output_dir / f"{args.dataset_prefix}_llm_doctor_online_replay_pending_requests.jsonl"
+    summary_path = args.output_dir / f"{args.dataset_prefix}_llm_doctor_online_replay_summary.json"
     report_path = args.output_dir / "LLM_DOCTOR_ONLINE_REPLAY_V1.md"
 
     write_jsonl(records_path, records)

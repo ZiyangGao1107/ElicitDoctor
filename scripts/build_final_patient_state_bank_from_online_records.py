@@ -11,6 +11,7 @@ from typing import Any
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_DIR = BASE_DIR / "outputs_final_patient_state_bank"
+DEFAULT_DATASET_PREFIX = "mdd5k"
 
 SYSTEM_PROMPT = (
     "你是一个研究场景中的精神心理主动问诊医生。"
@@ -18,6 +19,12 @@ SYSTEM_PROMPT = (
     "目标是逐步恢复缺失的规范化临床证据。"
     "只输出下一句医生问题；不要诊断、总结、安慰过长，"
     "不要提到内部标签、症状槽位、证据单元、奖励、患者模拟器或树结构。"
+)
+
+EN_SYSTEM_PROMPT = (
+    "You are a doctor in a research mental-health screening setting. "
+    "Based only on the visible doctor-patient dialogue history, ask the next natural, specific, safe clinician question. "
+    "Do not diagnose, summarize, over-reassure, or mention internal labels, symptom slots, evidence units, rewards, simulator metadata, or tree structure."
 )
 
 
@@ -81,8 +88,8 @@ def hard_error(row: dict[str, Any]) -> bool:
     )
 
 
-def records_path(output_dir: Path) -> Path:
-    return output_dir / "mdd5k_llm_doctor_online_replay_records.jsonl"
+def records_path(output_dir: Path, dataset_prefix: str = DEFAULT_DATASET_PREFIX) -> Path:
+    return output_dir / f"{dataset_prefix}_llm_doctor_online_replay_records.jsonl"
 
 
 def recovery_path(output_dir: Path) -> Path:
@@ -156,6 +163,37 @@ def build_messages(history: list[dict[str, str]]) -> list[dict[str, str]]:
     ]
 
 
+def format_history_for_language(history: list[dict[str, str]], language: str) -> str:
+    if language != "en":
+        return format_history(history)
+    if not history:
+        return "No dialogue history yet."
+    lines: list[str] = []
+    for idx, turn in enumerate(history[-12:], start=max(1, len(history) - 11)):
+        doctor = clean_text(turn.get("doctor_utterance"))
+        patient = clean_text(turn.get("patient_utterance"))
+        lines.append(f"{idx}. Doctor: {doctor}")
+        lines.append(f"   Patient: {patient}")
+    return "\n".join(lines)
+
+
+def build_messages_for_language(history: list[dict[str, str]], language: str) -> list[dict[str, str]]:
+    if language != "en":
+        return build_messages(history)
+    return [
+        {"role": "system", "content": EN_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": (
+                "Based on the visible screening dialogue below, generate the next doctor question.\n"
+                "Requirements: output exactly one question; be gentle, specific, and follow-up capable; do not reveal internal metadata.\n\n"
+                f"Visible dialogue history:\n{format_history_for_language(history, language)}\n\n"
+                "Next doctor question:"
+            ),
+        },
+    ]
+
+
 def initial_controller_state() -> dict[str, Any]:
     return {
         "turn_index": 0,
@@ -219,11 +257,12 @@ def build_states_for_source(
     label: str,
     output_dir: Path,
     metric_name: str,
+    dataset_prefix: str,
     require_verified: bool,
     max_turn_index: int | None,
     min_final_score: float | None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    path = records_path(output_dir)
+    path = records_path(output_dir, dataset_prefix=dataset_prefix)
     if not path.exists():
         raise FileNotFoundError(path)
     final_scores = load_final_scores(output_dir, metric_name)
@@ -273,6 +312,7 @@ def build_states_for_source(
             identity = state_identity(row, history)
             state_hash = stable_hash(identity)
             state_before = controller_state_before(row, running_state)
+            language = str(row.get("language") or "zh")
             states.append(
                 {
                     "state_id": f"final_patient_state::{state_hash}",
@@ -280,7 +320,8 @@ def build_states_for_source(
                     "state_identity": identity,
                     "controller_state_before": state_before,
                     "dialogue_history": list(history),
-                    "messages": build_messages(history),
+                    "messages": build_messages_for_language(history, language),
+                    "language": language,
                     "source_label": label,
                     "source_output_dir": str(output_dir),
                     "scenario_id": scenario_id,
@@ -373,7 +414,7 @@ def build_candidate_requests(
                     "base_severity": state.get("base_severity"),
                     "turn_index": state.get("turn_index"),
                     "messages": state.get("messages") or [],
-                    "expected_output": {"doctor_question": "one natural-language Chinese question"},
+                    "expected_output": {"doctor_question": "one natural-language question"},
                     "metadata": {
                         "state_id": state["state_id"],
                         "source_refs": state.get("source_refs") or [],
@@ -392,6 +433,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--source", action="append", type=parse_source, required=True)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--dataset-prefix", default=DEFAULT_DATASET_PREFIX)
     parser.add_argument("--metric-name", default="keyword_supported_only")
     parser.add_argument("--allow-non-verified", action="store_true")
     parser.add_argument("--max-turn-index", type=int, default=None)
@@ -413,6 +455,7 @@ def main() -> None:
             label=label,
             output_dir=output_dir,
             metric_name=args.metric_name,
+            dataset_prefix=args.dataset_prefix,
             require_verified=not args.allow_non_verified,
             max_turn_index=args.max_turn_index,
             min_final_score=args.min_final_score,
@@ -445,6 +488,7 @@ def main() -> None:
 
     summary = {
         "settings": {
+            "dataset_prefix": args.dataset_prefix,
             "metric_name": args.metric_name,
             "require_verified": not args.allow_non_verified,
             "max_turn_index": args.max_turn_index,

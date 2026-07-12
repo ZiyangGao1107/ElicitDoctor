@@ -89,10 +89,10 @@ def read_record_audit(records_path: Path) -> dict[str, Any]:
     return audit
 
 
-def summarize_model(*, tag: str, model: str, phase_dir: Path) -> dict[str, Any]:
+def summarize_model(*, tag: str, model: str, phase_dir: Path, dataset_prefix: str) -> dict[str, Any]:
     out_dir = phase_dir / f"outputs_{tag}_{model}"
-    records_path = out_dir / "mdd5k_llm_doctor_online_replay_records.jsonl"
-    pending_path = out_dir / "mdd5k_llm_doctor_online_replay_pending_requests.jsonl"
+    records_path = out_dir / f"{dataset_prefix}_llm_doctor_online_replay_records.jsonl"
+    pending_path = out_dir / f"{dataset_prefix}_llm_doctor_online_replay_pending_requests.jsonl"
     cache_path = out_dir / "online_patient_work" / "current_verified_patient_cache.jsonl"
     summary_path = out_dir / "pcv32_keyword_supported_only.json"
     metrics = read_metrics(summary_path)
@@ -164,6 +164,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tag", action="append", required=True, help="Suite tag, e.g. final_patient_doctor_suite_turn24")
     parser.add_argument("--turn", action="append", type=int, default=None, help="Optional turn label matching each --tag.")
     parser.add_argument("--models", default=",".join(DEFAULT_MODELS))
+    parser.add_argument("--dataset-prefix", default="mdd5k")
     parser.add_argument("--phase-dir", type=Path, default=BASE_DIR)
     parser.add_argument("--output-dir", type=Path, required=True)
     return parser.parse_args()
@@ -179,7 +180,10 @@ def main() -> None:
 
     suites = []
     for idx, tag in enumerate(args.tag):
-        rows = [summarize_model(tag=tag, model=model, phase_dir=args.phase_dir) for model in models]
+        rows = [
+            summarize_model(tag=tag, model=model, phase_dir=args.phase_dir, dataset_prefix=args.dataset_prefix)
+            for model in models
+        ]
         turn = turns[idx] if turns else None
         suite = {
             "tag": tag,
@@ -200,6 +204,7 @@ def main() -> None:
     result = {
         "suites": suites,
         "models": models,
+        "dataset_prefix": args.dataset_prefix,
         "output_dir": str(args.output_dir),
     }
     write_json(args.output_dir / "final_patient_baseline_suite_summary.json", result)

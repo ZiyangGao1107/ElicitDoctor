@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from _patient_controller_base import (
+    DEFAULT_DATASET_PREFIX,
     DEFAULT_GROUP_DIR,
     DEFAULT_PROFILE_PATH,
     load_group_records,
@@ -13,8 +14,24 @@ from _patient_controller_base import (
     normalize_severity,
     select_pilot_groups,
 )
-from prepare_reward_centered_grpo_training_data import render_prompt as render_reward_training_prompt
-from build_boundary_aware_preference_pairs_v5_patient_v2 import render_prompt as render_boundary_aware_v5_prompt
+try:
+    from prepare_reward_centered_grpo_training_data import render_prompt as render_reward_training_prompt
+except ImportError:
+    def render_reward_training_prompt(record: dict[str, Any], history_turns: int = 8, include_belief: bool = False) -> str:
+        return render_v6_history(record.get("dialogue_history") or [], max_turns=history_turns)
+
+try:
+    from build_boundary_aware_preference_pairs_v5_patient_v2 import render_prompt as render_boundary_aware_v5_prompt
+except ImportError:
+    def render_boundary_aware_v5_prompt(history: list[dict[str, str]], max_history_turns: int = 8) -> str:
+        converted = [
+            {
+                "doctor_utterance": turn.get("doctor_question", ""),
+                "patient_utterance": turn.get("patient_response", ""),
+            }
+            for turn in history
+        ]
+        return render_v6_history(converted, max_turns=max_history_turns)
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -56,6 +73,30 @@ POLICY_PROMPTS = {
     },
 }
 
+EN_POLICY_PROMPTS = {
+    "closed_llm_general": {
+        "visibility": "doctor_visible_only",
+        "system": (
+            "You are a clinician conducting a mental-health screening interview. "
+            "Ask one concise, natural, non-judgmental follow-up question at a time. "
+            "Do not give a diagnosis, summary, or explanation."
+        ),
+    },
+    "closed_llm_evidence_aware": {
+        "visibility": "doctor_visible_only",
+        "system": (
+            "You are a clinician conducting a mental-health screening interview. "
+            "Your goal is to gradually gather depression- and risk-related evidence. "
+            "If the patient gives a vague, avoidant, or incomplete answer, ask a gentle targeted follow-up about frequency, duration, severity, functional impact, safety, or a specific example. "
+            "If a topic is covered well enough, move to another important symptom or risk area. "
+            "Ask one concise question only. Do not diagnose or summarize."
+        ),
+    },
+    "reward_trained_nobelief": {"visibility": "doctor_visible_only", "system": ""},
+    "boundary_aware_v5_patient_v2": {"visibility": "doctor_visible_only", "system": ""},
+    "reward_centered_v6_patient_v2": {"visibility": "doctor_visible_only", "system": ""},
+}
+
 
 def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8", newline="\n") as f:
@@ -77,30 +118,55 @@ def select_profiles_from_groups(groups: list[dict[str, Any]], profiles: dict[str
     return selected
 
 
-def render_history(history: list[dict[str, str]]) -> str:
+def render_history(history: list[dict[str, str]], language: str = "zh") -> str:
     if not history:
+        if language == "en":
+            return "There is no dialogue history yet."
         return "当前还没有对话历史。"
     lines = []
     for idx, turn in enumerate(history, start=1):
+        if language == "en":
+            lines.append(f"{idx}. Doctor: {turn.get('doctor_utterance', '')}")
+            lines.append(f"   Patient: {turn.get('patient_utterance', '')}")
+            continue
         lines.append(f"{idx}. 医生：{turn.get('doctor_utterance', '')}")
         lines.append(f"   患者：{turn.get('patient_utterance', '')}")
     return "\n".join(lines)
 
 
-def render_v6_history(history: list[dict[str, str]], max_turns: int = 8) -> str:
+def render_v6_history(history: list[dict[str, str]], max_turns: int = 8, language: str = "zh") -> str:
     if not history:
+        if language == "en":
+            return "(no dialogue history yet)"
         return "（尚无对话历史）"
     lines = []
     for idx, turn in enumerate(history[-max_turns:], start=1):
         doctor = str(turn.get("doctor_utterance") or "").strip()
         patient = str(turn.get("patient_utterance") or "").strip()
+        if language == "en":
+            lines.append(f"{idx}. Doctor: {doctor}")
+            lines.append(f"   Patient: {patient}")
+            continue
         lines.append(f"{idx}. 医生：{doctor}")
         lines.append(f"   患者：{patient}")
     return "\n".join(lines)
 
 
-def render_reward_centered_v6_prompt(history: list[dict[str, str]], max_turns: int = 8) -> str:
-    history_text = render_v6_history(history, max_turns=max_turns)
+def render_reward_centered_v6_prompt(history: list[dict[str, str]], max_turns: int = 8, language: str = "zh") -> str:
+    history_text = render_v6_history(history, max_turns=max_turns, language=language)
+    if language == "en":
+        return (
+            "You are an active mental-health screening doctor agent.\n"
+            "Task: based only on the visible dialogue history, ask the next natural, specific, safe question. "
+            "The goal is to recover clinically relevant evidence under low-information patient answers.\n"
+            "Requirements:\n"
+            "1. Output exactly one doctor question and no diagnosis.\n"
+            "2. If the patient was vague, avoidant, or brief, gently clarify the same evidence dimension.\n"
+            "3. If the patient set a boundary, respect it and use the smallest necessary safety check or shift to a less sensitive related topic.\n"
+            "4. Do not mechanically repeat the previous question.\n\n"
+            f"Visible dialogue history:\n{history_text}\n\n"
+            "Next doctor question:"
+        )
     return (
         "你是一名精神心理主动问诊 doctor agent。\n"
         "任务：根据可见对话历史提出下一句自然、具体、安全的问诊问题，目标是在低信息回答下恢复临床证据。\n"
@@ -115,9 +181,9 @@ def render_reward_centered_v6_prompt(history: list[dict[str, str]], max_turns: i
     )
 
 
-def build_messages(policy_name: str, history: list[dict[str, str]]) -> list[dict[str, str]]:
+def build_messages(policy_name: str, history: list[dict[str, str]], language: str = "zh") -> list[dict[str, str]]:
     if policy_name == "reward_centered_v6_patient_v2":
-        prompt = render_reward_centered_v6_prompt(history, max_turns=8)
+        prompt = render_reward_centered_v6_prompt(history, max_turns=8, language=language)
         return [{"role": "user", "content": prompt}]
     if policy_name == "reward_trained_nobelief":
         prompt = render_reward_training_prompt(
@@ -137,6 +203,18 @@ def build_messages(policy_name: str, history: list[dict[str, str]]) -> list[dict
         prompt = render_boundary_aware_v5_prompt(boundary_history, max_history_turns=8)
         return [{"role": "user", "content": prompt}]
 
+    if language == "en":
+        policy = EN_POLICY_PROMPTS.get(policy_name, EN_POLICY_PROMPTS["closed_llm_general"])
+        user = (
+            "Based only on the dialogue history below, generate the next doctor question.\n\n"
+            f"{render_history(history, language=language)}\n\n"
+            "Output requirement: return exactly one English question. Do not include numbering, explanation, diagnosis, or extra text."
+        )
+        return [
+            {"role": "system", "content": policy["system"]},
+            {"role": "user", "content": user},
+        ]
+
     policy = POLICY_PROMPTS[policy_name]
     user = (
         "请根据以下对话历史，生成下一句医生问题。\n\n"
@@ -154,6 +232,7 @@ def build_initial_requests(
     profiles: list[dict[str, Any]],
     severities: list[str],
     policies: list[str],
+    language: str = "zh",
 ) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for profile in profiles:
@@ -168,9 +247,10 @@ def build_initial_requests(
                         "profile_id": profile["profile_id"],
                         "case_id": profile.get("case_id"),
                         "base_severity": severity,
+                        "language": language,
                         "turn_index": 0,
                         "dialogue_history": [],
-                        "messages": build_messages(policy_name, []),
+                        "messages": build_messages(policy_name, [], language=language),
                         "expected_output": {
                             "doctor_question": "one natural-language Chinese question",
                         },
@@ -243,6 +323,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Prepare initial requests for small/closed LLM doctor baselines.")
     parser.add_argument("--profiles", type=Path, default=DEFAULT_PROFILE_PATH)
     parser.add_argument("--group-dir", type=Path, default=DEFAULT_GROUP_DIR)
+    parser.add_argument("--dataset-prefix", default=DEFAULT_DATASET_PREFIX)
+    parser.add_argument("--language", choices=["zh", "en"], default="zh")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--splits", nargs="+", default=["dev", "test"])
     parser.add_argument("--max-groups", type=int, default=90)
@@ -266,7 +348,7 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     profiles_by_id = load_profiles(args.profiles)
     groups = select_pilot_groups(
-        load_group_records(args.group_dir, args.splits),
+        load_group_records(args.group_dir, args.splits, dataset_prefix=args.dataset_prefix),
         max_groups=args.max_groups,
         max_per_slot=args.max_per_slot,
     )
@@ -276,9 +358,10 @@ def main() -> None:
         profiles=profiles,
         severities=severities,
         policies=args.policies,
+        language=args.language,
     )
 
-    request_path = args.output_dir / "mdd5k_llm_doctor_initial_requests.jsonl"
+    request_path = args.output_dir / f"{args.dataset_prefix}_llm_doctor_initial_requests.jsonl"
     protocol_path = args.output_dir / "LLM_DOCTOR_BASELINE_REQUEST_PROTOCOL_V1.md"
     write_jsonl(request_path, requests)
     write_protocol(protocol_path, request_path, len(requests))

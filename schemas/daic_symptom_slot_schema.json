@@ -1,0 +1,151 @@
+{
+  "schema_name": "daic_depression_screening_slot_schema",
+  "version": "2026-07-12",
+  "source": {
+    "note": "English DAIC-WoZ / Extended-DAIC slot schema for profile-grounded active inquiry. Slots align PHQ-8 items plus risk, functioning, and context fields."
+  },
+  "gate_target_formula": "topic_responsiveness * information_retention * clarity",
+  "tree_space": {
+    "daic_adult": [
+      "anhedonia",
+      "hopelessness_or_crying",
+      "sleep",
+      "fatigue",
+      "appetite_loss",
+      "self_worth",
+      "attention_decline",
+      "psychomotor_change",
+      "suicide_or_self_harm",
+      "anxiety_or_worry",
+      "trauma_or_ptsd",
+      "substance_use",
+      "work_status",
+      "social_support",
+      "treatment_history",
+      "family_psychiatric_history",
+      "current_stressors"
+    ],
+    "unknown": []
+  },
+  "slots": [
+    {
+      "slot": "anhedonia",
+      "en_name": "Low interest or pleasure",
+      "evidence_unit_hints": ["interest_loss", "reduced_pleasure", "motivation", "activities"],
+      "criticality": "high",
+      "question_keywords": ["interest", "pleasure", "enjoy", "fun", "motivation", "hobbies", "things you like", "no interest", "lost interest"]
+    },
+    {
+      "slot": "hopelessness_or_crying",
+      "en_name": "Depressed mood, hopelessness, or crying",
+      "evidence_unit_hints": ["low_mood", "sadness", "hopelessness", "crying", "mood_severity"],
+      "criticality": "high",
+      "question_keywords": ["sad", "down", "depressed", "hopeless", "unhappy", "cry", "crying", "mood", "empty", "blue"]
+    },
+    {
+      "slot": "sleep",
+      "en_name": "Sleep",
+      "evidence_unit_hints": ["insomnia", "hypersomnia", "sleep_quality", "nightmares", "daytime_impact"],
+      "criticality": "medium",
+      "question_keywords": ["sleep", "asleep", "insomnia", "wake up", "waking", "nightmare", "tired in the morning", "sleeping too much"]
+    },
+    {
+      "slot": "fatigue",
+      "en_name": "Fatigue or low energy",
+      "evidence_unit_hints": ["low_energy", "tiredness", "exhaustion", "daytime_function"],
+      "criticality": "medium",
+      "question_keywords": ["tired", "fatigue", "energy", "exhausted", "worn out", "drained", "low energy"]
+    },
+    {
+      "slot": "appetite_loss",
+      "en_name": "Appetite or eating change",
+      "evidence_unit_hints": ["appetite_change", "eating_change", "weight_change", "overeating", "loss_of_appetite"],
+      "criticality": "medium",
+      "question_keywords": ["appetite", "eating", "eat", "food", "weight", "hungry", "overeating", "not eating", "loss of appetite"]
+    },
+    {
+      "slot": "self_worth",
+      "en_name": "Worthlessness, failure, or guilt",
+      "evidence_unit_hints": ["worthlessness", "guilt", "failure", "self_criticism"],
+      "criticality": "high",
+      "question_keywords": ["failure", "failed", "guilty", "guilt", "worthless", "bad about yourself", "blame yourself", "let people down"]
+    },
+    {
+      "slot": "attention_decline",
+      "en_name": "Concentration difficulty",
+      "evidence_unit_hints": ["concentration", "attention", "focus", "memory_or_task_impact"],
+      "criticality": "medium",
+      "question_keywords": ["concentrate", "concentration", "focus", "attention", "distracted", "remember", "memory", "read", "watch tv"]
+    },
+    {
+      "slot": "psychomotor_change",
+      "en_name": "Psychomotor slowing or restlessness",
+      "evidence_unit_hints": ["slowed_down", "restless", "agitation", "observable_change"],
+      "criticality": "medium",
+      "question_keywords": ["slow", "slowed", "moving slowly", "speaking slowly", "restless", "fidget", "can't sit still", "agitated"]
+    },
+    {
+      "slot": "suicide_or_self_harm",
+      "en_name": "Suicidal ideation or self-harm risk",
+      "evidence_unit_hints": ["death_ideation", "self_harm", "suicidal_thought", "plan_or_intent", "safety"],
+      "criticality": "critical",
+      "question_keywords": ["suicide", "suicidal", "kill yourself", "hurt yourself", "self harm", "self-harm", "death", "dead", "not want to live", "end your life"]
+    },
+    {
+      "slot": "anxiety_or_worry",
+      "en_name": "Anxiety or worry",
+      "evidence_unit_hints": ["worry", "nervousness", "panic", "anxiety_impact"],
+      "criticality": "medium",
+      "question_keywords": ["anxious", "anxiety", "worry", "worried", "nervous", "panic", "afraid", "fear"]
+    },
+    {
+      "slot": "trauma_or_ptsd",
+      "en_name": "Trauma-related stress",
+      "evidence_unit_hints": ["traumatic_event", "intrusions", "avoidance", "hyperarousal"],
+      "criticality": "medium",
+      "question_keywords": ["trauma", "traumatic", "ptsd", "flashback", "abuse", "assault", "violence", "nightmares", "war", "accident"]
+    },
+    {
+      "slot": "substance_use",
+      "en_name": "Alcohol or substance use",
+      "evidence_unit_hints": ["alcohol", "drug_use", "coping_use", "impairment"],
+      "criticality": "medium",
+      "question_keywords": ["alcohol", "drink", "drinking", "drugs", "substance", "weed", "marijuana", "cocaine", "pills", "using"]
+    },
+    {
+      "slot": "work_status",
+      "en_name": "Work, school, or daily functioning",
+      "evidence_unit_hints": ["employment", "school", "responsibilities", "performance", "functional_impact"],
+      "criticality": "high",
+      "question_keywords": ["work", "job", "school", "class", "study", "college", "responsibilities", "daily", "functioning", "performance", "missed"]
+    },
+    {
+      "slot": "social_support",
+      "en_name": "Social support and relationships",
+      "evidence_unit_hints": ["support", "friends", "family", "isolation", "relationship"],
+      "criticality": "low",
+      "question_keywords": ["support", "friend", "friends", "family", "relationship", "people", "alone", "lonely", "isolated", "talk to"]
+    },
+    {
+      "slot": "treatment_history",
+      "en_name": "Treatment history",
+      "evidence_unit_hints": ["therapy", "medication", "counseling", "hospitalization", "help_seeking"],
+      "criticality": "low",
+      "question_keywords": ["therapy", "therapist", "counseling", "counselor", "medication", "medicine", "doctor", "treatment", "hospital", "psychiatrist"]
+    },
+    {
+      "slot": "family_psychiatric_history",
+      "en_name": "Family psychiatric history",
+      "evidence_unit_hints": ["relative", "condition", "treatment", "family_risk"],
+      "criticality": "medium",
+      "question_keywords": ["family history", "mother", "father", "parent", "parents", "sibling", "brother", "sister", "depression in your family", "mental health in your family"]
+    },
+    {
+      "slot": "current_stressors",
+      "en_name": "Current stressors",
+      "evidence_unit_hints": ["stressor", "loss", "financial", "conflict", "life_event"],
+      "criticality": "medium",
+      "question_keywords": ["stress", "stressed", "problem", "problems", "money", "financial", "loss", "breakup", "divorce", "conflict", "difficult", "hard time"]
+    }
+  ]
+}

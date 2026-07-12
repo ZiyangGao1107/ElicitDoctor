@@ -15,6 +15,14 @@ DEFAULT_TRAJECTORY_PATH = (
     / "mdd5k_doctor_policy_baseline_records.jsonl"
 )
 DEFAULT_OUTPUT_DIR = BASE_DIR / "outputs_llm_patient_realizer_v3_2_json_contract_v2"
+DEFAULT_DATASET_PREFIX = "mdd5k"
+
+EN_SEVERE_SAFE_CUE_PHRASES = [
+    "I do not really want to talk about that right now.",
+    "I am not sure how to explain it.",
+    "It is a little hard to say.",
+    "Could we come back to that later?",
+]
 
 
 SLOT_FORBIDDEN_TERMS = {
@@ -68,6 +76,11 @@ def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
 
 def clean_text(text: Any) -> str:
     return " ".join(str(text or "").replace("\u3000", " ").split())
+
+
+def language_for_record(record: dict[str, Any]) -> str:
+    language = str(record.get("language") or "").lower()
+    return "en" if language.startswith("en") else "zh"
 
 
 def units_by_ids(record: dict[str, Any], ids: list[str]) -> list[dict[str, Any]]:
@@ -146,7 +159,28 @@ def severity_instruction(severity: str, low_info_category: str) -> str:
     )
 
 
-def response_budget(severity: str, retained_count: int, weakened_count: int) -> dict[str, Any]:
+def response_budget(severity: str, retained_count: int, weakened_count: int, language: str = "zh") -> dict[str, Any]:
+    if language == "en":
+        if severity == "severe_low_info":
+            return {
+                "max_sentences": 1,
+                "max_words": 16,
+                "clinical_fact_budget": 0 if retained_count == 0 else 1,
+                "required_style": "boundary/vague/minimal; leave room for gentle follow-up",
+            }
+        if severity == "moderate_low_info":
+            return {
+                "max_sentences": 2,
+                "max_words": 32,
+                "clinical_fact_budget": min(1, retained_count + weakened_count),
+                "required_style": "partial and uncertain",
+            }
+        return {
+            "max_sentences": 3,
+            "max_words": 48,
+            "clinical_fact_budget": retained_count + weakened_count,
+            "required_style": "natural and incomplete",
+        }
     if severity == "severe_low_info":
         return {
             "max_sentences": 1,
@@ -262,6 +296,7 @@ def build_visibility_contract(
     record: dict[str, Any],
     retained_units: list[dict[str, Any]],
     weakened_units: list[dict[str, Any]],
+    language: str = "zh",
 ) -> dict[str, Any]:
     severity = str(record.get("base_severity") or "")
     topic = coarse_topic(record.get("target_tree_node"))
@@ -273,6 +308,40 @@ def build_visibility_contract(
             allowed_hint_count = min(1, len(weakened_units) + len(retained_units))
         # For severe turns, exact unit text is deliberately hidden from the
         # realizer. The verifier still sees the true retained/weakened units.
+        if language == "en":
+            return {
+                "contract_version": "pcv3_2_json_allowed_only_v3_prompt_hardened",
+                "progressive_disclosure_stage": stage,
+                "can_say_exact": [],
+                "can_hint_about_topic": (
+                    "the doctor's current concern only in generic words; do not name the exact symptom slot"
+                ),
+                "internal_target_topic_hidden_from_realizer": True,
+                "allowed_hint_count": allowed_hint_count,
+                "forbidden_surface_terms": forbidden_terms_for_slot(record.get("target_tree_node")),
+                "must_not_invent": [
+                    "new symptoms",
+                    "duration or frequency",
+                    "diagnosis labels",
+                    "risk or self-harm details",
+                    "causes or life events not stated by the doctor",
+                ],
+                "must_not_do": [
+                    "do not restate a symptom phrase as a full fact",
+                    "do not echo the doctor's symptom words as a patient admission",
+                    "do not answer with a complete clinical detail",
+                    "do not add a second clinical fact",
+                    "do not summarize the hidden profile",
+                ],
+                "safe_response_moves": [
+                    "acknowledge the topic without confirming details",
+                    "say it is hard to explain right now",
+                    "set a soft boundary",
+                    "ask to slow down or come back later",
+                    "give a very small vague hint only when progressive_disclosure_stage is one_weak_hint",
+                ],
+                "allowed_response_templates": EN_SEVERE_SAFE_CUE_PHRASES,
+            }
         return {
             "contract_version": "pcv3_2_json_allowed_only_v3_prompt_hardened",
             "progressive_disclosure_stage": stage,
@@ -332,10 +401,12 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> lis
     weakened_units = units_by_ids(record, record.get("weakened_unit_ids") or [])
     severity = str(record.get("base_severity") or "")
     low_info_category = str(record.get("low_info_category") or "")
+    language = language_for_record(record)
     visibility_contract = build_visibility_contract(
         record=record,
         retained_units=retained_units,
         weakened_units=weakened_units,
+        language=language,
     )
     disclosure_stage = (
         visibility_contract.get("progressive_disclosure_stage")
@@ -363,6 +434,15 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> lis
         "Do not sound like a bullet list or a copied evidence summary.",
         "Respect response_budget.max_sentences and response_budget.max_chinese_chars.",
     ]
+    if language == "en":
+        hard_constraints = [
+            constraint.replace(
+                "Respect response_budget.max_sentences and response_budget.max_chinese_chars.",
+                "Respect response_budget.max_sentences and response_budget.max_words.",
+            )
+            for constraint in hard_constraints
+        ]
+        hard_constraints.insert(1, "Write the patient_response in natural English.")
     forbidden_terms = visibility_contract.get("forbidden_surface_terms") or []
     if forbidden_terms:
         hard_constraints.append(
@@ -372,7 +452,7 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> lis
     if severity == "severe_low_info":
         hard_constraints.append(
             "For severe_low_info, patient_response must include at least one exact boundary/vague cue phrase: "
-            + ", ".join(SEVERE_SAFE_CUE_PHRASES)
+            + ", ".join(EN_SEVERE_SAFE_CUE_PHRASES if language == "en" else SEVERE_SAFE_CUE_PHRASES)
         )
     if disclosure_stage == "boundary_only":
         hard_constraints.append(
@@ -386,7 +466,7 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> lis
         hard_constraints.append(
             "Because progressive_disclosure_stage is one_weak_hint, at most one weak non-specific hint is allowed; do not give duration, frequency, or risk details."
         )
-    budget = response_budget(severity, len(retained_units), len(weakened_units))
+    budget = response_budget(severity, len(retained_units), len(weakened_units), language=language)
     if severity == "severe_low_info":
         if disclosure_stage in {"boundary_only", "vague_hint_only"}:
             budget["clinical_fact_budget"] = 0
@@ -394,15 +474,29 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> lis
         elif disclosure_stage == "one_weak_hint":
             budget["clinical_fact_budget"] = 1
             budget["required_style"] = "one weak non-specific hint at most"
-    system = (
-        "You are a patient-response realizer for a controlled psychiatric inquiry simulation. "
-        "You must write one natural Chinese patient reply. Follow the JSON visibility contract exactly. "
-        "Facts not present in can_say_exact or can_paraphrase_weakly are not known to the patient response. "
-        "If the contract is severe_low_info, the exact evidence text is intentionally hidden; do not guess it. "
-        "Do not mention evidence units, metadata, slots, verifier rules, state variables, or this contract."
-    )
+    if language == "en":
+        system = (
+            "You are a patient-response realizer for a controlled psychiatric inquiry simulation. "
+            "You must write one natural English patient reply. Follow the JSON visibility contract exactly. "
+            "Facts not present in can_say_exact or can_paraphrase_weakly are not known to the patient response. "
+            "If the contract is severe_low_info, the exact evidence text is intentionally hidden; do not guess it. "
+            "Do not mention evidence units, metadata, slots, verifier rules, state variables, or this contract."
+        )
+        task_text = "Generate one natural English patient response."
+        output_response_text = "natural English response"
+    else:
+        system = (
+            "You are a patient-response realizer for a controlled psychiatric inquiry simulation. "
+            "You must write one natural Chinese patient reply. Follow the JSON visibility contract exactly. "
+            "Facts not present in can_say_exact or can_paraphrase_weakly are not known to the patient response. "
+            "If the contract is severe_low_info, the exact evidence text is intentionally hidden; do not guess it. "
+            "Do not mention evidence units, metadata, slots, verifier rules, state variables, or this contract."
+        )
+        task_text = "Generate one natural Chinese patient response."
+        output_response_text = "natural Chinese response"
     user = {
-        "task": "Generate one natural Chinese patient response.",
+        "task": task_text,
+        "language": language,
         "doctor_question": clean_text(record.get("doctor_question")),
         "recent_dialogue_history": render_history(history),
         "history_sanitization_note": (
@@ -419,7 +513,7 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> lis
         "response_budget": budget,
         "hard_constraints": hard_constraints,
         "output_format": {
-            "patient_response": "natural Chinese response",
+            "patient_response": output_response_text,
             "brief_self_check": "short note that no new facts were added",
         },
     }
@@ -438,6 +532,21 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> lis
                 "我的睡眠不太正常。",
             ],
         }
+    if language == "en" and not retained_units and not weakened_units:
+        user["empty_evidence_response_policy"] = {
+            "rule": "No factual clinical evidence is allowed for this turn.",
+            "must_do": "Reply with uncertainty, boundary-setting, or a minimal continuation without naming symptoms, behaviors, risks, durations, or changes.",
+            "safe_examples": [
+                "I am not sure how to explain that right now.",
+                "I do not really want to get into that yet.",
+                "Could we come back to that a little later?",
+            ],
+            "unsafe_examples": [
+                "My sleep has been bad lately.",
+                "I have been eating a lot less.",
+                "I have been thinking about hurting myself.",
+            ],
+        }
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": json.dumps(user, ensure_ascii=False, indent=2)},
@@ -447,6 +556,7 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> lis
 def build_requests(
     *,
     trajectory_path: Path,
+    dataset_prefix: str,
     policies: set[str] | None,
     severities: set[str] | None,
     target_slots: set[str] | None,
@@ -485,6 +595,7 @@ def build_requests(
 
     requests = []
     for record in selected:
+        language = language_for_record(record)
         turn_key = f"{record.get('scenario_id')}::turn_{record.get('turn_index')}"
         retained_units = units_by_ids(record, record.get("retained_unit_ids") or [])
         weakened_units = units_by_ids(record, record.get("weakened_unit_ids") or [])
@@ -495,9 +606,10 @@ def build_requests(
         requests.append(
             {
                 "request_id": request_id,
-                "task_name": "mdd5k_llm_patient_realizer",
+                "task_name": f"{dataset_prefix}_llm_patient_realizer",
                 "prompt_protocol_version": "llm_patient_realizer_pcv3_2_json_contract_v3_prompt_hardened",
                 "history_mode": "doctor_history_only_patient_text_hidden",
+                "language": language,
                 "source_trajectory_file": str(trajectory_path),
                 "source_record_id": record.get("record_id"),
                 "scenario_id": record.get("scenario_id"),
@@ -538,7 +650,11 @@ def build_requests(
                     "cross_turn_patient_state": record.get("cross_turn_patient_state"),
                 },
                 "expected_output": {
-                    "patient_response": "natural Chinese response constrained by allowed evidence",
+                    "patient_response": (
+                        "natural English response constrained by allowed evidence"
+                        if language == "en"
+                        else "natural Chinese response constrained by allowed evidence"
+                    ),
                     "brief_self_check": "short no-new-fact self check",
                 },
             }
@@ -578,6 +694,8 @@ def write_protocol(path: Path, request_path: Path, summary: dict[str, Any]) -> N
         "",
         "## Required Output",
         "",
+        "For records with `language=en`, `patient_response` must be natural English. Otherwise it preserves the existing natural Chinese contract.",
+        "",
         "```json",
         "{",
         '  "patient_response": "自然中文患者回答",',
@@ -592,6 +710,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Prepare LLM patient realizer requests from controller trajectory records.")
     parser.add_argument("--trajectory-path", type=Path, default=DEFAULT_TRAJECTORY_PATH)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--dataset-prefix", default=DEFAULT_DATASET_PREFIX)
     parser.add_argument("--policies", nargs="*", default=None)
     parser.add_argument("--severities", nargs="*", default=None)
     parser.add_argument("--target-slots", nargs="*", default=None)
@@ -608,6 +727,7 @@ def main() -> None:
     max_requests_per_cell = args.max_requests_per_cell if args.max_requests_per_cell and args.max_requests_per_cell > 0 else None
     requests = build_requests(
         trajectory_path=args.trajectory_path,
+        dataset_prefix=args.dataset_prefix,
         policies=set(args.policies) if args.policies else None,
         severities=set(args.severities) if args.severities else None,
         target_slots=set(args.target_slots) if args.target_slots else None,
@@ -615,12 +735,13 @@ def main() -> None:
         max_requests_per_cell=max_requests_per_cell,
         sample_seed=args.sample_seed,
     )
-    request_path = args.output_dir / "mdd5k_llm_patient_realizer_requests.jsonl"
-    summary_path = args.output_dir / "mdd5k_llm_patient_realizer_request_summary.json"
+    request_path = args.output_dir / f"{args.dataset_prefix}_llm_patient_realizer_requests.jsonl"
+    summary_path = args.output_dir / f"{args.dataset_prefix}_llm_patient_realizer_request_summary.json"
     protocol_path = args.output_dir / "LLM_PATIENT_REALIZER_REQUEST_PROTOCOL_V3_1.md"
     write_jsonl(request_path, requests)
     summary = {
         "num_requests": len(requests),
+        "dataset_prefix": args.dataset_prefix,
         "trajectory_path": str(args.trajectory_path),
         "request_path": str(request_path),
         "protocol_path": str(protocol_path),

@@ -34,6 +34,7 @@ DEFAULT_PROFILE_PATH = (
 DEFAULT_SCHEMA_PATH = BASE_DIR / "schemas" / "mdd5k_symptom_slot_schema.json"
 DEFAULT_GROUP_DIR = BASE_DIR / "outputs_profile_grounded_environment"
 DEFAULT_OUTPUT_DIR = BASE_DIR / "outputs_patient_controller_base"
+DEFAULT_DATASET_PREFIX = "mdd5k"
 
 SEVERITIES = [
     "reference_informative",
@@ -70,6 +71,50 @@ INITIAL_QUESTION_OVERRIDES = {
     "binge_eating": "我想了解一下最近有没有暴饮暴食、吃很多或控制不住进食的情况？",
     "school_or_study_status": "我想了解一下你最近的学习、学校上课、作业考试或完成任务有没有受到影响？",
     "work_status": "我想了解一下你最近的工作、上班、绩效或完成任务有没有受到影响？",
+}
+
+EN_SLOT_DISPLAY = {
+    "anhedonia": "interest or pleasure in doing things",
+    "depressed_mood": "low mood or feeling down",
+    "sleep": "sleep",
+    "fatigue": "energy and tiredness",
+    "appetite": "appetite or eating",
+    "appetite_loss": "appetite or eating",
+    "self_worth": "feelings of failure or guilt",
+    "concentration": "concentration",
+    "attention_decline": "concentration",
+    "psychomotor_change": "moving or speaking more slowly, or feeling restless",
+    "suicide_or_self_harm": "thoughts of death, self-harm, or suicide",
+    "anxiety_or_worry": "anxiety or worry",
+    "trauma_or_ptsd": "trauma-related stress",
+    "substance_use": "alcohol or substance use",
+    "social_support": "support from other people",
+    "work_or_school_function": "work, school, or daily functioning",
+    "work_status": "work or daily functioning",
+    "school_or_study_status": "school or study functioning",
+    "treatment_history": "mental-health treatment history",
+    "family_psychiatric_history": "family mental-health history",
+    "current_stressors": "current stressors",
+}
+
+EN_INITIAL_QUESTION_OVERRIDES = {
+    "anhedonia": "Have you been losing interest or pleasure in things you usually do?",
+    "depressed_mood": "Have you been feeling down, depressed, or hopeless recently?",
+    "sleep": "How has your sleep been recently?",
+    "fatigue": "How has your energy level been lately?",
+    "appetite": "Have you noticed any changes in your appetite or eating?",
+    "self_worth": "Have you been feeling bad about yourself, guilty, or like you have failed in some way?",
+    "concentration": "Have you had trouble concentrating on things recently?",
+    "psychomotor_change": "Have you felt slowed down, restless, or unable to sit still recently?",
+    "suicide_or_self_harm": "Have you had thoughts about death, hurting yourself, or not wanting to be alive?",
+    "anxiety_or_worry": "Have you been feeling anxious, nervous, or unable to stop worrying?",
+    "trauma_or_ptsd": "Have past stressful or traumatic experiences been affecting you recently?",
+    "substance_use": "Has alcohol or substance use been a concern for you recently?",
+    "social_support": "Who have you been able to rely on for support recently?",
+    "work_or_school_function": "How have work, school, or daily responsibilities been going recently?",
+    "treatment_history": "Have you ever talked with a professional or received treatment for mental-health concerns?",
+    "family_psychiatric_history": "Is there any family history of mental-health difficulties that feels relevant?",
+    "current_stressors": "What kinds of stressors have been weighing on you recently?",
 }
 
 
@@ -146,11 +191,28 @@ def select_units_for_response(
     return retained, weakened, removed
 
 
-def make_initial_question(slot: str) -> str:
+def make_initial_question(slot: str, language: str = "zh") -> str:
+    if language == "en":
+        return EN_INITIAL_QUESTION_OVERRIDES.get(
+            slot,
+            f"Could you tell me more about your recent {EN_SLOT_DISPLAY.get(slot, slot.replace('_', ' '))}?",
+        )
     return INITIAL_QUESTION_OVERRIDES.get(slot, make_doctor_question(slot))
 
 
-def make_targeted_followup_question(slot: str) -> str:
+def make_targeted_followup_question(slot: str, language: str = "zh") -> str:
+    if language == "en":
+        display = EN_SLOT_DISPLAY.get(slot, slot.replace("_", " "))
+        if slot == "suicide_or_self_harm":
+            return (
+                "If it is okay to ask, can you tell me whether those thoughts have happened recently, "
+                "how strong they were, and whether you had any plan or intent?"
+            )
+        if slot == "sleep":
+            return "Could you say more about whether it is trouble falling asleep, waking up, sleeping too much, or how it affects your day?"
+        if slot in {"work_or_school_function", "work_status", "school_or_study_status"}:
+            return "Could you give a specific example of how this has affected work, school, or daily responsibilities recently?"
+        return f"Could you say a bit more about the frequency, duration, severity, or impact of your {display}?"
     display = SLOT_DISPLAY.get(slot, slot)
     if slot == "suicide_or_self_harm":
         return "关于自伤或自杀相关想法，我想更具体地确认一下：这些念头最近出现的频率、强度、是否有计划或准备行为，以及你能不能控制住？"
@@ -167,7 +229,15 @@ def make_targeted_followup_question(slot: str) -> str:
     return f"关于你的{display}，能具体说说出现频率、持续多久、严重程度，以及对生活的影响吗？"
 
 
-def make_second_targeted_followup_question(slot: str) -> str:
+def make_second_targeted_followup_question(slot: str, language: str = "zh") -> str:
+    if language == "en":
+        display = EN_SLOT_DISPLAY.get(slot, slot.replace("_", " "))
+        if slot == "suicide_or_self_harm":
+            return (
+                "I want to check safety carefully. When those thoughts come up, what helps you stay safe, "
+                "and is there anything you feel at risk of doing?"
+            )
+        return f"If you are comfortable, could you share one recent example related to your {display}, including when it happened and what made it better or worse?"
     display = SLOT_DISPLAY.get(slot, slot)
     if slot == "school_or_study_status":
         return "如果可以的话，能不能再补充一个最近一次学习、上课、作业或考试受到影响的具体例子？比如什么时候发生、影响多严重、后来怎么处理的。"
@@ -178,7 +248,9 @@ def make_second_targeted_followup_question(slot: str) -> str:
     return f"如果可以的话，能不能再补充一个最近一次和{display}有关的具体例子？比如什么时候发生、当时有多严重、后来怎么缓解的。"
 
 
-def make_generic_clarification_question() -> str:
+def make_generic_clarification_question(language: str = "zh") -> str:
+    if language == "en":
+        return "Could you tell me a little more about that?"
     return "你能再说说刚才这个情况吗？"
 
 
@@ -191,6 +263,42 @@ def make_response_text(
     target_slot: str,
     max_chars: int,
 ) -> str:
+    if profile.get("language") == "en":
+        retained_text = "; ".join(clean_text(unit.get("unit_text") or "") for unit in retained_units if unit.get("unit_text"))
+        weakened_text = "; ".join(clean_text(unit.get("unit_text") or "") for unit in weakened_units if unit.get("unit_text"))
+        if len(retained_text) > max_chars:
+            retained_text = retained_text[:max_chars].rstrip(" ;,.") + "..."
+        if len(weakened_text) > 120:
+            weakened_text = weakened_text[:120].rstrip(" ;,.") + "..."
+
+        if category == "informative_reference":
+            return retained_text or "I am not sure how to answer that right now."
+        if category == "partial_omission":
+            return retained_text or "I can say a little, but I am not sure about all the details."
+        if category == "vague_or_uncertain":
+            if retained_text:
+                return f"It is something like {retained_text}, but I cannot explain all the details clearly right now."
+            return "It is hard for me to explain clearly right now."
+        if category == "targeted_recovery_partial":
+            if retained_text and weakened_text:
+                return f"If I say a little, {retained_text}. There is also something like {weakened_text}, but I do not want to go into every detail."
+            if retained_text:
+                return f"If I say a little, {retained_text}, but I do not want to go into every detail."
+            return "I can only say a little right now; the details are hard to talk about."
+        if category == "generic_clarification_no_recovery":
+            return "It is still about the same. I do not really know how to explain it better."
+        if category == "direct_refusal_or_boundary":
+            return "I do not really want to talk about that in detail right now. Could we skip it for now?"
+        if category == "topic_deflection":
+            alt_slot, alt_unit = alternative_deflection_unit(profile, target_slot)
+            if alt_unit:
+                alt_text = clean_text(alt_unit.get("unit_text") or "")
+                return f"{alt_text}. About what you just asked, I do not really want to go into it right now."
+            return "I feel a bit scattered right now. Maybe we could talk about something easier first."
+        if category == "minimal_generic":
+            return "I am not sure how to explain it clearly right now."
+        return retained_text or "I am not sure how to answer that right now."
+
     retained_text = join_units(retained_units, max_chars=max_chars)
     weakened_text = join_units(weakened_units, max_chars=90)
 
@@ -584,10 +692,10 @@ def load_profiles(path: Path) -> dict[str, dict[str, Any]]:
     return {record["profile_id"]: record for record in iter_jsonl(path)}
 
 
-def load_group_records(group_dir: Path, splits: list[str]) -> list[dict[str, Any]]:
+def load_group_records(group_dir: Path, splits: list[str], dataset_prefix: str = DEFAULT_DATASET_PREFIX) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for split in splits:
-        path = group_dir / f"mdd5k_profile_grounded_environment_{split}_groups.jsonl"
+        path = group_dir / f"{dataset_prefix}_profile_grounded_environment_{split}_groups.jsonl"
         for record in iter_jsonl(path):
             record = dict(record)
             record["split"] = split

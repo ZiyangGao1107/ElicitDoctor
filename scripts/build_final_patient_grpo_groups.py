@@ -117,8 +117,27 @@ def value_prediction_for(row: dict[str, Any], maps: dict[str, dict[str, float]])
 
 
 def visible_prompt(row: dict[str, Any]) -> str:
+    language = str(row.get("language") or "").lower()
     state_identity = row.get("source_state_identity") or {}
     history = row.get("dialogue_history") or state_identity.get("visible_history") or []
+    if language.startswith("en"):
+        if not history:
+            return (
+                "You are a mental-health active-inquiry doctor in a controlled research simulation. "
+                "Output only the next natural, specific, and safe doctor question.\n\n"
+                "Visible dialogue history: no previous dialogue.\n\nNext doctor question:"
+            )
+        lines: list[str] = []
+        for idx, turn in enumerate(history[-12:], start=max(1, len(history) - 11)):
+            doctor = clean_text(turn.get("doctor") or turn.get("doctor_utterance"))
+            patient = clean_text(turn.get("patient") or turn.get("patient_utterance"))
+            lines.append(f"{idx}. Doctor: {doctor}")
+            lines.append(f"   Patient: {patient}")
+        return (
+            "You are a mental-health active-inquiry doctor in a controlled research simulation. "
+            "Output only the next natural, specific, and safe doctor question.\n\n"
+            f"Visible dialogue history:\n{chr(10).join(lines)}\n\nNext doctor question:"
+        )
     if not history:
         return (
             "你是一个研究场景中的精神心理主动问诊医生。"
@@ -220,6 +239,7 @@ def main() -> None:
                         "request_id": row.get("request_id"),
                         "source_state_id": state_id,
                         "candidate_index": row.get("candidate_index"),
+                        "language": row.get("language"),
                         "base_severity": row.get("base_severity"),
                         "turn_index": row.get("turn_index"),
                         "patient_response": row.get("patient_response"),
@@ -257,6 +277,7 @@ def main() -> None:
                 "metadata": {
                     "source_state_id": state_id,
                     "candidate_count": len(responses),
+                    "language": first.get("language"),
                     "base_severity": first.get("base_severity"),
                     "turn_index": first.get("turn_index"),
                     "profile_id": first.get("profile_id"),

@@ -45,6 +45,7 @@ final_lora_adapter/
 notes/
 presentations/
 references/papers/
+data/daic/
 
 # Local transfer helpers with machine-specific paths
 scripts/qwen3_hf_transfer_job.py
