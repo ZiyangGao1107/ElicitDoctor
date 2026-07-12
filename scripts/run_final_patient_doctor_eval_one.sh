@@ -16,6 +16,7 @@ MAX_PROFILES="${MAX_PROFILES:-108}"
 MAX_PER_SLOT="${MAX_PER_SLOT:-999}"
 EVAL_SPLITS="${EVAL_SPLITS:-test}"
 SEVERITIES="${SEVERITIES:-mild_low_info moderate_low_info severe_low_info}"
+GROUP_DIR="${GROUP_DIR:-}"
 REPLAY_BATCH_SIZE="${REPLAY_BATCH_SIZE:-8}"
 REALIZER_BATCH_SIZE="${REALIZER_BATCH_SIZE:-4}"
 CLOSED_MODEL="${CLOSED_MODEL:-gpt-4.1-mini}"
@@ -32,6 +33,14 @@ export TOKENIZERS_PARALLELISM=false
 if [[ -n "${ENV_PATH:-}" ]]; then source "$ENV_PATH/bin/activate"; fi
 cd "$PHASE_DIR"
 export PYTHONPATH="$PWD/scripts:${PYTHONPATH:-}"
+
+if [[ -z "$GROUP_DIR" ]]; then
+  if [[ -d "$PHASE_DIR/data/f32_f41_profile_split" ]]; then
+    GROUP_DIR="data/f32_f41_profile_split"
+  else
+    GROUP_DIR="outputs_f32_f41_single_label_stratified_profile_split_v1"
+  fi
+fi
 
 CALLER="qwen"
 POLICY="reward_centered_v6_patient_v2"
@@ -120,7 +129,7 @@ GLOBAL_CACHE_SUMMARY="$OUT/online_patient_work/current_verified_patient_cache_su
 : > "$GLOBAL_CACHE"
 
 echo "=== PCV3.2 online final-patient doctor eval start $(date) model=$MODEL_KEY out=$OUT ===" | tee "$MAIN_LOG"
-echo "max_turns=$MAX_TURNS max_groups=$MAX_GROUPS max_profiles=$MAX_PROFILES max_per_slot=$MAX_PER_SLOT eval_splits=$EVAL_SPLITS" | tee -a "$MAIN_LOG"
+echo "max_turns=$MAX_TURNS max_groups=$MAX_GROUPS max_profiles=$MAX_PROFILES max_per_slot=$MAX_PER_SLOT eval_splits=$EVAL_SPLITS group_dir=$GROUP_DIR" | tee -a "$MAIN_LOG"
 
 run_replay() {
   local out_dir="$1"
@@ -135,7 +144,7 @@ run_replay() {
   fi
   "$PY" scripts/run_llm_doctor_online_replay.py \
     --output-dir "$out_dir" \
-    --group-dir data/f32_f41_profile_split \
+    --group-dir "$GROUP_DIR" \
     --splits $EVAL_SPLITS \
     --max-groups "$MAX_GROUPS" \
     --max-per-slot "$MAX_PER_SLOT" \
