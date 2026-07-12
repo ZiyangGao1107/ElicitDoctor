@@ -83,6 +83,25 @@ def clean_doctor_question(text: str) -> str:
     return text
 
 
+def clean_doctor_question_for_language(text: str, language: str) -> str:
+    if language != "en":
+        return clean_doctor_question(text)
+    text = (text or "").strip()
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()
+    text = text.replace("\r", "\n")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    text = lines[0] if lines else text
+    for prefix in ("Doctor:", "Question:", "Assistant:", "assistant:"):
+        if text.startswith(prefix):
+            text = text[len(prefix) :].strip()
+    text = text.strip("`\"' ")
+    if not text:
+        return "What has been most difficult for you recently?"
+    if not text.endswith("?"):
+        text = text.rstrip(".!?) ?") + "?"
+    return text
+
+
 def render_prompt(tokenizer, messages: list[dict[str, str]]) -> str:
     try:
         return tokenizer.apply_chat_template(
@@ -117,6 +136,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-new-tokens", type=int, default=96)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-p", type=float, default=1.0)
+    parser.add_argument("--language", choices=["zh", "en"], default="zh")
     parser.add_argument("--dtype", choices=["bf16", "fp16", "fp32"], default="bf16")
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--batch-size", type=int, default=1)
@@ -219,7 +239,7 @@ def main() -> None:
                     json.dumps(
                         {
                             "request_id": request_id,
-                            "doctor_question": clean_doctor_question(raw),
+                            "doctor_question": clean_doctor_question_for_language(raw, args.language),
                             "raw_output": raw,
                             "provider": args.provider_tag,
                             "model": args.model_tag,

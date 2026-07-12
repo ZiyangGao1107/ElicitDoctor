@@ -158,6 +158,29 @@ def clean_question(text: str) -> str:
     return text
 
 
+def clean_question_for_language(text: str, language: str) -> str:
+    if language != "en":
+        return clean_question(text)
+    text = (text or "").strip()
+    if not text:
+        return "What has been most difficult for you recently?"
+    if "```" in text:
+        fenced_parts = [part.strip() for part in text.split("```") if part.strip()]
+        if fenced_parts:
+            text = fenced_parts[0]
+    lines = [line.strip() for line in text.replace("\r", "\n").splitlines() if line.strip()]
+    text = lines[0] if lines else text
+    for prefix in ("Doctor:", "Question:", "Assistant:", "assistant:"):
+        if text.startswith(prefix):
+            text = text[len(prefix) :].strip()
+    text = text.strip("`\"' ")
+    if not text:
+        return "What has been most difficult for you recently?"
+    if not text.endswith("?"):
+        text = text.rstrip(".!?) ?") + "?"
+    return text
+
+
 def messages_to_plain_prompt(messages: list[dict[str, str]]) -> str:
     parts = []
     for message in messages:
@@ -388,6 +411,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=20, help="Maximum new requests to call; <=0 means all pending.")
     parser.add_argument("--max-output-tokens", type=int, default=96)
     parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--language", choices=["zh", "en"], default="zh")
     parser.add_argument("--anthropic-version", default="2023-06-01")
     parser.add_argument("--timeout-seconds", type=float, default=60.0)
     parser.add_argument("--max-retries", type=int, default=3)
@@ -479,7 +503,7 @@ def main() -> None:
                     if attempt + 1 >= max(1, args.per_request_retries):
                         raise
                     time.sleep(max(args.sleep_seconds, 1.0) * (attempt + 1))
-            doctor_question = clean_question(raw_text)
+            doctor_question = clean_question_for_language(raw_text, args.language)
             out.write(
                 json.dumps(
                     {

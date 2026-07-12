@@ -124,6 +124,28 @@ Expected cached doctor output format:
 {"request_id": "...", "doctor_question": "What has been most difficult recently?"}
 ```
 
+Open-source local model testing is the same loop, but uses a local HuggingFace model instead of an API:
+
+```powershell
+.\scripts\run_daic_open_model_eval.ps1 `
+  -ModelPath cache/qwen3-8b-hf-remote-code `
+  -NoAdapter `
+  -ModelTag Qwen3-8B-Base-DAIC `
+  -OutputDir outputs_daic_qwen3_base_eval
+```
+
+For a trained LoRA adapter:
+
+```powershell
+.\scripts\run_daic_open_model_eval.ps1 `
+  -ModelPath cache/qwen3-8b-hf-remote-code `
+  -AdapterPath outputs_qwen3_final_patient_doctor_sft_lora_daic_sft_r16/final_lora_adapter `
+  -ModelTag Qwen3-8B-SFT-DAIC `
+  -OutputDir outputs_daic_qwen3_sft_eval
+```
+
+The open-model wrapper sets the DAIC paths and English mode internally, then loops over replay, local generation, replay continuation, and metric computation.
+
 ## 3. SFT Data And Training
 
 Build SFT data from DAIC online replay records:

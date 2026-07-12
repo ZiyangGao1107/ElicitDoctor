@@ -1,9 +1,10 @@
 param(
-    [string]$Model = "gpt-4.1-mini",
-    [ValidateSet("openai_compatible", "openai_responses", "anthropic", "gemini")]
-    [string]$Provider = "openai_compatible",
-    [string]$EnvFile = ".env.closed",
-    [string]$OutputDir = "outputs_daic_closed_eval",
+    [string]$ModelPath = "cache/qwen3-8b-hf-remote-code",
+    [string]$AdapterPath = "",
+    [switch]$NoAdapter,
+    [string]$ModelTag = "Qwen3-Open-DAIC",
+    [string]$ProviderTag = "local_qwen_daic",
+    [string]$OutputDir = "outputs_daic_open_eval",
     [string]$Profiles = "data/daic/patient_profiles/daic_dialogue_derived_patient_profiles.jsonl",
     [string]$Schema = "schemas/daic_symptom_slot_schema.json",
     [string]$GroupDir = "data/daic/profile_split",
@@ -15,8 +16,14 @@ param(
     [int]$MaxTurns = 24,
     [int]$MaxIterations = 32,
     [int]$Limit = 0,
-    [int]$MaxOutputTokens = 96,
+    [int]$MaxNewTokens = 96,
     [double]$Temperature = 0.0,
+    [double]$TopP = 1.0,
+    [ValidateSet("bf16", "fp16", "fp32")]
+    [string]$DType = "bf16",
+    [string]$Device = "cuda",
+    [int]$BatchSize = 1,
+    [int]$FlushEvery = 10,
     [string]$Python = "",
     [switch]$SkipMetrics
 )
@@ -49,27 +56,30 @@ function Require-Path {
     }
 }
 
+Require-Path $ModelPath "local HF model directory"
 Require-Path $Profiles "DAIC profile file"
 Require-Path $Schema "DAIC schema file"
 Require-Path $GroupDir "DAIC profile split directory"
 Require-Path $CanonicalDir "DAIC canonical evidence directory"
-if (-not (Test-Path -LiteralPath $EnvFile)) {
-    throw "Missing env file at: $EnvFile. Create it with API keys before running this script."
+
+$useNoAdapter = $NoAdapter.IsPresent -or [string]::IsNullOrWhiteSpace($AdapterPath)
+if (-not $useNoAdapter) {
+    Require-Path (Join-Path $AdapterPath "adapter_config.json") "LoRA adapter_config.json"
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-$safeModel = [Regex]::Replace($Model, "[^A-Za-z0-9_.-]+", "_")
-$doctorOutputPath = Join-Path $OutputDir "$($Provider)_$($safeModel)_doctor_outputs.jsonl"
+$safeModel = [Regex]::Replace($ModelTag, "[^A-Za-z0-9_.-]+", "_")
+$doctorOutputPath = Join-Path $OutputDir "$($safeModel)_doctor_outputs.jsonl"
 $pendingPath = Join-Path $OutputDir "daic_llm_doctor_online_replay_pending_requests.jsonl"
 $recordsPath = Join-Path $OutputDir "daic_llm_doctor_online_replay_records.jsonl"
 $analysisDir = Join-Path $OutputDir "tree_aligned_canonical_recovery"
 
-Write-Host "DAIC closed-model evaluation"
-Write-Host "  provider: $Provider"
-Write-Host "  model:    $Model"
-Write-Host "  output:   $OutputDir"
-Write-Host "  cache:    $doctorOutputPath"
+Write-Host "DAIC open-model evaluation"
+Write-Host "  model path:  $ModelPath"
+Write-Host "  adapter:     $(if ($useNoAdapter) { 'none' } else { $AdapterPath })"
+Write-Host "  output:      $OutputDir"
+Write-Host "  cache:       $doctorOutputPath"
 
 for ($iteration = 1; $iteration -le $MaxIterations; $iteration++) {
     Write-Host ""
@@ -99,17 +109,30 @@ for ($iteration = 1; $iteration -le $MaxIterations; $iteration++) {
         break
     }
 
-    Write-Host "== Iteration ${iteration}: call closed model =="
-    & $Python scripts/call_closed_llm_for_pending_requests.py `
-        --provider $Provider `
-        --model $Model `
-        --env-file $EnvFile `
-        --pending-path $pendingPath `
-        --output-path $doctorOutputPath `
-        --limit $Limit `
-        --max-output-tokens $MaxOutputTokens `
-        --language en `
-        --temperature $Temperature
+    Write-Host "== Iteration ${iteration}: call open model =="
+    $callArgs = @(
+        "scripts/call_qwen3_hf_lora_for_pending_requests.py",
+        "--input-path", $pendingPath,
+        "--output-path", $doctorOutputPath,
+        "--model-path", $ModelPath,
+        "--provider-tag", $ProviderTag,
+        "--model-tag", $ModelTag,
+        "--limit", "$Limit",
+        "--max-new-tokens", "$MaxNewTokens",
+        "--temperature", "$Temperature",
+        "--top-p", "$TopP",
+        "--language", "en",
+        "--dtype", $DType,
+        "--device", $Device,
+        "--batch-size", "$BatchSize",
+        "--flush-every", "$FlushEvery"
+    )
+    if ($useNoAdapter) {
+        $callArgs += "--no-adapter"
+    } else {
+        $callArgs += @("--adapter-path", $AdapterPath)
+    }
+    & $Python @callArgs
 
     if ($iteration -eq $MaxIterations) {
         throw "Reached MaxIterations=$MaxIterations with pending requests still remaining."
