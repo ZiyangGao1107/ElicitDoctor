@@ -78,6 +78,24 @@ bash scripts/run_final_patient_doctor_eval_one.sh closed_evidence outputs_closed
 This evaluates the closed model as the doctor. The patient is still the frozen
 final patient simulator.
 
+To evaluate the added disclosure settings with the same runner, keep the model
+configuration unchanged and override only the patient setting variables:
+
+```bash
+export CLOSED_PROVIDER=openai_compatible
+export CLOSED_MODEL=gpt-4.1-mini
+export CLOSED_ENV_FILE=.env
+export SEVERITIES="random_disclosure fully_cooperative"
+export RANDOM_LOW_DISCLOSURE_PROB=0.5
+export RANDOM_DISCLOSURE_SEED=0
+bash scripts/run_final_patient_doctor_eval_one.sh \
+  closed_evidence outputs_closed_gpt41mini_random_full_turn24 24
+```
+
+`fully_cooperative` is deterministic. `random_disclosure` is deterministic for
+the same profile, turn, question, probability, and seed, so reruns are
+reproducible when these inputs are unchanged.
+
 Use a new output directory or run tag for every independent baseline run:
 
 ```bash

@@ -31,8 +31,9 @@ The short script index is in `scripts/README.md`.
   providers.
 - `scripts/build_final_patient_sft_from_online_records.py`: SFT data builder
   from verified final-patient online records.
-- `scripts/build_final_patient_action_value_data.py`: same-state action-value
-  data builder for Value Model V2.
+- `scripts/build_belief_guided_query_reward_data.py`: builds visible-dialogue
+  belief-guided query reward and long-horizon value labels without using
+  canonical evidence as reward.
 - `scripts/build_final_patient_rfv_data.py`: residual
   future-value data builder.
 - `scripts/build_final_patient_grpo_groups.py`: GRPO
@@ -52,6 +53,11 @@ Final evaluation records must satisfy:
 
 See `docs/final_patient_setting.md` for the controller, realizer, verifier, and
 repair-loop design.
+
+The default disclosure settings remain `mild_low_info`, `moderate_low_info`,
+and `severe_low_info`. Additional patient settings are available for controlled
+stress tests: `random_disclosure` with configurable
+`RANDOM_LOW_DISCLOSURE_PROB`, and `fully_cooperative`.
 
 ## Data Policy
 
@@ -88,10 +94,11 @@ external `.env` file or environment variables. Do not commit keys.
 
 ## Value Model V2
 
-The maintained value-model route is same-state action value: given one visible
-dialogue state and several candidate doctor questions, estimate which question
-will recover more canonical evidence over the remaining dialogue. See
-`docs/value_model_v2.md`.
+The maintained value-model route is belief-guided: estimate whether a doctor
+question targets unresolved belief regions, reduces visible diagnostic
+uncertainty, and improves future patient openness. Canonical evidence recovery
+is reserved for final evaluation and oracle-style RFV baselines, not the direct
+query reward. See `docs/value_model_v2.md`.
 
 ## Repository Safety
 

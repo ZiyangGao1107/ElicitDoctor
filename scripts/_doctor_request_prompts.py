@@ -13,8 +13,15 @@ from _patient_controller_base import (
     normalize_severity,
     select_pilot_groups,
 )
-from prepare_reward_centered_grpo_training_data import render_prompt as render_reward_training_prompt
-from build_boundary_aware_preference_pairs_v5_patient_v2 import render_prompt as render_boundary_aware_v5_prompt
+try:
+    from prepare_reward_centered_grpo_training_data import render_prompt as render_reward_training_prompt
+except ModuleNotFoundError:
+    render_reward_training_prompt = None
+
+try:
+    from build_boundary_aware_preference_pairs_v5_patient_v2 import render_prompt as render_boundary_aware_v5_prompt
+except ModuleNotFoundError:
+    render_boundary_aware_v5_prompt = None
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -120,6 +127,10 @@ def build_messages(policy_name: str, history: list[dict[str, str]]) -> list[dict
         prompt = render_reward_centered_v6_prompt(history, max_turns=8)
         return [{"role": "user", "content": prompt}]
     if policy_name == "reward_trained_nobelief":
+        if render_reward_training_prompt is None:
+            raise ModuleNotFoundError(
+                "prepare_reward_centered_grpo_training_data is required for reward_trained_nobelief."
+            )
         prompt = render_reward_training_prompt(
             {"dialogue_history": history, "belief_before": {}},
             history_turns=8,
@@ -134,6 +145,10 @@ def build_messages(policy_name: str, history: list[dict[str, str]]) -> list[dict
             }
             for turn in history
         ]
+        if render_boundary_aware_v5_prompt is None:
+            raise ModuleNotFoundError(
+                "build_boundary_aware_preference_pairs_v5_patient_v2 is required for boundary_aware_v5_patient_v2."
+            )
         prompt = render_boundary_aware_v5_prompt(boundary_history, max_history_turns=8)
         return [{"role": "user", "content": prompt}]
 

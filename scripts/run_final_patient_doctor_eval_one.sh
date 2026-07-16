@@ -16,6 +16,8 @@ MAX_PROFILES="${MAX_PROFILES:-108}"
 MAX_PER_SLOT="${MAX_PER_SLOT:-999}"
 EVAL_SPLITS="${EVAL_SPLITS:-test}"
 SEVERITIES="${SEVERITIES:-mild_low_info moderate_low_info severe_low_info}"
+RANDOM_LOW_DISCLOSURE_PROB="${RANDOM_LOW_DISCLOSURE_PROB:-0.5}"
+RANDOM_DISCLOSURE_SEED="${RANDOM_DISCLOSURE_SEED:-0}"
 GROUP_DIR="${GROUP_DIR:-}"
 REPLAY_BATCH_SIZE="${REPLAY_BATCH_SIZE:-8}"
 REALIZER_BATCH_SIZE="${REALIZER_BATCH_SIZE:-4}"
@@ -130,6 +132,7 @@ GLOBAL_CACHE_SUMMARY="$OUT/online_patient_work/current_verified_patient_cache_su
 
 echo "=== PCV3.2 online final-patient doctor eval start $(date) model=$MODEL_KEY out=$OUT ===" | tee "$MAIN_LOG"
 echo "max_turns=$MAX_TURNS max_groups=$MAX_GROUPS max_profiles=$MAX_PROFILES max_per_slot=$MAX_PER_SLOT eval_splits=$EVAL_SPLITS group_dir=$GROUP_DIR" | tee -a "$MAIN_LOG"
+echo "severities=$SEVERITIES random_low_disclosure_prob=$RANDOM_LOW_DISCLOSURE_PROB random_disclosure_seed=$RANDOM_DISCLOSURE_SEED" | tee -a "$MAIN_LOG"
 
 run_replay() {
   local out_dir="$1"
@@ -150,6 +153,8 @@ run_replay() {
     --max-per-slot "$MAX_PER_SLOT" \
     --max-profiles "$MAX_PROFILES" \
     --max-turns "$MAX_TURNS" \
+    --random-low-disclosure-prob "$RANDOM_LOW_DISCLOSURE_PROB" \
+    --random-disclosure-seed "$RANDOM_DISCLOSURE_SEED" \
     --patient-controller-version v3_2 \
     --provider "$provider" \
     --model-output-path "$MODEL_OUTPUT_PATH" \

@@ -49,10 +49,28 @@ Severity changes the disclosure policy:
 - `moderate`: some avoidance and partial disclosure.
 - `severe`: stronger avoidance, more sensitive evidence withheld, and slower
   opening under follow-up.
+- `random_disclosure`: each turn follows a probabilistic mixture. With
+  probability `random_low_disclosure_prob`, the patient behaves like a
+  low-disclosure patient for that turn; otherwise the patient answers
+  cooperatively within the controller-approved evidence budget.
+- `fully_cooperative`: the patient is willing to answer clearly and does not
+  actively terminate, while still staying inside the retained/weakened evidence
+  allowed by the controller.
 
 This does not mean the severe patient is permanently silent. After sufficient
 trust, repeated relevant follow-up, or high-quality supportive questioning, the
 controller can move evidence from withheld to weakened or retained.
+
+The default experiment severity list remains `mild_low_info moderate_low_info
+severe_low_info`. To run the added settings, pass them explicitly:
+
+```bash
+python scripts/run_llm_doctor_online_replay.py \
+  --patient-controller-version v3_2 \
+  --severities random_disclosure fully_cooperative \
+  --random-low-disclosure-prob 0.5 \
+  --random-disclosure-seed 0
+```
 
 ## LLM Realizer
 

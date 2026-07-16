@@ -118,6 +118,8 @@ def trait_for_profile(profile_id: str) -> str:
 
 
 def shift_trait_for_severity(trait: str, severity: str) -> str:
+    if severity == "fully_cooperative":
+        return "open"
     if severity == "mild_low_info":
         return {"avoidant": "guarded"}.get(trait, trait)
     if severity == "severe_low_info":
@@ -204,6 +206,22 @@ def response_distribution(
         "boundary_refusal": refusal,
         "topic_deflection": deflection,
     }
+
+
+def random_disclosure_distribution(base_distribution: dict[str, float], low_disclosure_prob: float) -> dict[str, float]:
+    if set(base_distribution) == {"no_profile_evidence"}:
+        return dict(base_distribution)
+    low_prob = clamp(float(low_disclosure_prob), 0.0, 1.0)
+    low_keys = ["partial_disclosure", "vague_uncertain", "boundary_refusal", "topic_deflection"]
+    low_total = sum(max(0.0, float(base_distribution.get(key, 0.0))) for key in low_keys)
+    if low_total <= 0:
+        low_weights = {"partial_disclosure": 0.45, "vague_uncertain": 0.45, "boundary_refusal": 0.05, "topic_deflection": 0.05}
+    else:
+        low_weights = {key: max(0.0, float(base_distribution.get(key, 0.0))) / low_total for key in low_keys}
+    mixed = {"informative_response": 1.0 - low_prob}
+    for key in low_keys:
+        mixed[key] = low_prob * low_weights[key]
+    return mixed
 
 
 def budget_from_response_type(
@@ -314,7 +332,7 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
         )
         prior_refusal = bool((state.get("prior_boundary_refusal_by_slot") or {}).get(target_slot))
 
-        if severity == "reference_informative":
+        if severity in {"reference_informative", "fully_cooperative"}:
             response_type = "informative_response"
             distribution = {"informative_response": 1.0}
         else:
@@ -326,6 +344,8 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
                 prior_boundary_refusal=prior_refusal,
                 has_new_units=has_new_units,
             )
+            if severity == "random_disclosure":
+                distribution = random_disclosure_distribution(distribution, self.random_low_disclosure_prob)
             response_type = stable_choice(
                 sorted(distribution.items()),
                 profile_id,
@@ -333,16 +353,20 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
                 target_slot,
                 asked_before,
                 doctor_question,
+                self.random_low_disclosure_prob if severity == "random_disclosure" else "",
                 "response_type",
             )
 
-        budget = budget_from_response_type(
-            response_type=response_type,
-            total_units=total_units,
-            asked_before=asked_before,
-            quality=quality,
-            sensitivity=sensitivity,
-        )
+        if severity in {"fully_cooperative", "random_disclosure"} and response_type == "informative_response":
+            budget = self._fully_cooperative_budget(total_units)
+        else:
+            budget = budget_from_response_type(
+                response_type=response_type,
+                total_units=total_units,
+                asked_before=asked_before,
+                quality=quality,
+                sensitivity=sensitivity,
+            )
         budget.update(
             {
                 "low_info_cause": response_type,
@@ -352,6 +376,11 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
                 "slot_sensitivity": sensitivity,
                 "doctor_recovery_quality": quality,
                 "prior_boundary_refusal": prior_refusal,
+                "disclosure_mode": severity,
+                "random_low_disclosure_prob": self.random_low_disclosure_prob if severity == "random_disclosure" else None,
+                "random_low_disclosure_triggered": (response_type not in {"informative_response", "no_profile_evidence"})
+                if severity == "random_disclosure"
+                else None,
                 "response_type_distribution": {
                     key: round(float(value), 6) for key, value in distribution.items()
                 },
@@ -490,6 +519,10 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
             "doctor_recovery_quality": budget["doctor_recovery_quality"],
             "prior_boundary_refusal": budget["prior_boundary_refusal"],
             "response_type_distribution": budget["response_type_distribution"],
+            "response_type_distribution_v2_base": budget.get("response_type_distribution_v2_base"),
+            "disclosure_mode": budget.get("disclosure_mode", severity),
+            "random_low_disclosure_prob": budget.get("random_low_disclosure_prob"),
+            "random_low_disclosure_triggered": budget.get("random_low_disclosure_triggered"),
             "controller_version": "dynamic_profile_grounded_controller_v2",
             "profile_id": profile_id,
             "case_id": profile.get("case_id"),
@@ -706,6 +739,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-groups", type=int, default=90)
     parser.add_argument("--max-per-slot", type=int, default=5)
     parser.add_argument("--max-units-per-slot", type=int, default=8)
+    parser.add_argument("--random-low-disclosure-prob", type=float, default=0.5)
+    parser.add_argument("--random-disclosure-seed", type=int, default=0)
     parser.add_argument(
         "--severities",
         nargs="+",
@@ -724,7 +759,13 @@ def main() -> None:
         max_groups=args.max_groups,
         max_per_slot=args.max_per_slot,
     )
-    controller = DynamicPatientControllerV2(schema=schema, profiles=profiles, max_units_per_slot=args.max_units_per_slot)
+    controller = DynamicPatientControllerV2(
+        schema=schema,
+        profiles=profiles,
+        max_units_per_slot=args.max_units_per_slot,
+        random_low_disclosure_prob=args.random_low_disclosure_prob,
+        random_disclosure_seed=args.random_disclosure_seed,
+    )
     severities = [normalize_severity(level) for level in args.severities]
     records = build_pilot_records(controller, groups, severities)
     summary = summarize(records)

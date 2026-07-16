@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from collections import Counter, defaultdict
@@ -37,6 +38,8 @@ DEFAULT_OUTPUT_DIR = BASE_DIR / "outputs_patient_controller_base"
 
 SEVERITIES = [
     "reference_informative",
+    "fully_cooperative",
+    "random_disclosure",
     "mild_low_info",
     "moderate_low_info",
     "severe_low_info",
@@ -98,6 +101,13 @@ def write_json(path: Path, obj: Any) -> None:
 def normalize_severity(level: str) -> str:
     aliases = {
         "reference": "reference_informative",
+        "full": "fully_cooperative",
+        "cooperative": "fully_cooperative",
+        "full_cooperation": "fully_cooperative",
+        "random": "random_disclosure",
+        "random_low_info": "random_disclosure",
+        "random_low_disclosure": "random_disclosure",
+        "probabilistic_low_info": "random_disclosure",
         "mild": "mild_low_info",
         "moderate": "moderate_low_info",
         "severe": "severe_low_info",
@@ -110,6 +120,16 @@ def normalize_severity(level: str) -> str:
 
 def contains_any(text: str, cues: list[str]) -> bool:
     return any(cue in (text or "") for cue in cues)
+
+
+def clamp_probability(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+def stable_unit_float(*parts: Any) -> float:
+    text = "::".join(str(part) for part in parts)
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return int(digest[:12], 16) / float(16**12 - 1)
 
 
 def unit_profile_id(unit: dict[str, Any]) -> str:
@@ -228,10 +248,19 @@ def make_response_text(
 class DynamicPatientControllerV1:
     """Stateful profile-grounded controller for dynamic low-informativeness."""
 
-    def __init__(self, schema: dict[str, Any], profiles: dict[str, dict[str, Any]], max_units_per_slot: int = 8):
+    def __init__(
+        self,
+        schema: dict[str, Any],
+        profiles: dict[str, dict[str, Any]],
+        max_units_per_slot: int = 8,
+        random_low_disclosure_prob: float = 0.5,
+        random_disclosure_seed: int = 0,
+    ):
         self.schema = schema
         self.profiles = profiles
         self.max_units_per_slot = max_units_per_slot
+        self.random_low_disclosure_prob = clamp_probability(random_low_disclosure_prob)
+        self.random_disclosure_seed = int(random_disclosure_seed)
         self.interpreter = OnlineQueryInterpreter(schema)
 
     @staticmethod
@@ -268,6 +297,23 @@ class DynamicPatientControllerV1:
             routing_source = "anaphora_to_previous_target"
         return target, pred, routing_source
 
+    def _random_low_disclosure_triggered(self, *parts: Any) -> bool:
+        return (
+            stable_unit_float("random_disclosure", self.random_disclosure_seed, *parts)
+            < self.random_low_disclosure_prob
+        )
+
+    @staticmethod
+    def _fully_cooperative_budget(total_units: int) -> dict[str, Any]:
+        return {
+            "retain_count": total_units,
+            "weaken_count": 0,
+            "topic": 1.0,
+            "clarity": 1.0,
+            "category": "informative_reference",
+            "response_type": "informative_response",
+        }
+
     def _budget(
         self,
         *,
@@ -277,6 +323,8 @@ class DynamicPatientControllerV1:
         asked_before: int,
         is_targeted_followup: bool,
         has_new_units: bool,
+        profile_id: str = "",
+        doctor_question: str = "",
     ) -> dict[str, Any]:
         if total_units <= 0:
             return {
@@ -285,16 +333,72 @@ class DynamicPatientControllerV1:
                 "topic": 0.0,
                 "clarity": 0.0,
                 "category": "no_profile_evidence",
+                "response_type": "no_profile_evidence",
+                "disclosure_mode": "reference" if severity == "reference_informative" else severity,
+                "random_low_disclosure_prob": self.random_low_disclosure_prob
+                if severity == "random_disclosure"
+                else None,
+                "random_low_disclosure_triggered": False if severity == "random_disclosure" else None,
             }
 
-        if severity == "reference_informative":
-            return {
-                "retain_count": total_units,
-                "weaken_count": 0,
-                "topic": 1.0,
-                "clarity": 1.0,
-                "category": "informative_reference",
-            }
+        if severity in {"reference_informative", "fully_cooperative"}:
+            budget = self._fully_cooperative_budget(total_units)
+            budget["disclosure_mode"] = "fully_cooperative" if severity == "fully_cooperative" else "reference"
+            return budget
+
+        if severity == "random_disclosure":
+            low_triggered = self._random_low_disclosure_triggered(
+                profile_id,
+                target_slot,
+                asked_before,
+                is_targeted_followup,
+                doctor_question,
+            )
+            if not low_triggered:
+                budget = self._fully_cooperative_budget(total_units)
+                budget.update(
+                    {
+                        "disclosure_mode": "random_disclosure",
+                        "random_low_disclosure_prob": self.random_low_disclosure_prob,
+                        "random_low_disclosure_triggered": False,
+                    }
+                )
+                return budget
+            if asked_before == 0:
+                budget = {
+                    "retain_count": max(1, min(3, math.floor(total_units * 0.25))),
+                    "weaken_count": max(1, min(2, math.ceil(total_units * 0.2))),
+                    "topic": 1.0,
+                    "clarity": 0.5,
+                    "category": "vague_or_uncertain",
+                    "response_type": "vague_uncertain",
+                }
+            elif is_targeted_followup and has_new_units:
+                budget = {
+                    "retain_count": max(1, min(3, math.ceil(total_units * 0.25))),
+                    "weaken_count": 1,
+                    "topic": 1.0,
+                    "clarity": 0.75,
+                    "category": "targeted_recovery_partial",
+                    "response_type": "partial_disclosure",
+                }
+            else:
+                budget = {
+                    "retain_count": 0,
+                    "weaken_count": 0,
+                    "topic": 0.7,
+                    "clarity": 0.4,
+                    "category": "generic_clarification_no_recovery",
+                    "response_type": "vague_uncertain",
+                }
+            budget.update(
+                {
+                    "disclosure_mode": "random_disclosure",
+                    "random_low_disclosure_prob": self.random_low_disclosure_prob,
+                    "random_low_disclosure_triggered": True,
+                }
+            )
+            return budget
 
         if severity == "mild_low_info":
             if asked_before == 0:
@@ -470,11 +574,13 @@ class DynamicPatientControllerV1:
 
         budget = self._budget(
             severity=severity,
+            profile_id=profile_id,
             target_slot=target_slot,
             total_units=total_units,
             asked_before=asked_before,
             is_targeted_followup=is_targeted_followup,
             has_new_units=has_new_units,
+            doctor_question=doctor_question,
         )
         retained_units, weakened_units, removed_units = select_units_for_response(
             units,
@@ -531,6 +637,11 @@ class DynamicPatientControllerV1:
             "base_severity": severity,
             "dynamic_stage": dynamic_stage,
             "low_info_category": budget["category"],
+            "low_info_cause": budget.get("response_type", budget["category"]),
+            "response_type": budget.get("response_type", budget["category"]),
+            "disclosure_mode": budget.get("disclosure_mode", severity),
+            "random_low_disclosure_prob": budget.get("random_low_disclosure_prob"),
+            "random_low_disclosure_triggered": budget.get("random_low_disclosure_triggered"),
             "profile_id": profile_id,
             "case_id": profile.get("case_id"),
             "diagnoses": profile.get("diagnoses"),
@@ -809,6 +920,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-groups", type=int, default=90)
     parser.add_argument("--max-per-slot", type=int, default=5)
     parser.add_argument("--max-units-per-slot", type=int, default=8)
+    parser.add_argument("--random-low-disclosure-prob", type=float, default=0.5)
+    parser.add_argument("--random-disclosure-seed", type=int, default=0)
     parser.add_argument(
         "--severities",
         nargs="+",
@@ -829,6 +942,8 @@ def main() -> None:
         schema=schema,
         profiles=profiles,
         max_units_per_slot=args.max_units_per_slot,
+        random_low_disclosure_prob=args.random_low_disclosure_prob,
+        random_disclosure_seed=args.random_disclosure_seed,
     )
     severities = [normalize_severity(level) for level in args.severities]
     records = build_pilot_records(controller, selected_groups, severities)
@@ -838,6 +953,8 @@ def main() -> None:
             "max_groups": args.max_groups,
             "max_per_slot": args.max_per_slot,
             "max_units_per_slot": args.max_units_per_slot,
+            "random_low_disclosure_prob": args.random_low_disclosure_prob,
+            "random_disclosure_seed": args.random_disclosure_seed,
             "severities": severities,
         },
         **summarize(records),

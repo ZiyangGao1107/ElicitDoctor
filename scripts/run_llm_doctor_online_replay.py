@@ -477,6 +477,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-profiles", type=int, default=27)
     parser.add_argument("--max-turns", type=int, default=8)
     parser.add_argument("--max-units-per-slot", type=int, default=8)
+    parser.add_argument("--random-low-disclosure-prob", type=float, default=0.5)
+    parser.add_argument("--random-disclosure-seed", type=int, default=0)
     parser.add_argument("--patient-controller-version", choices=["v1", "v2", "v3", "v3_1", "v3_2"], default="v1")
     parser.add_argument("--provider", choices=["scripted", "cached"], default="scripted")
     parser.add_argument("--model-output-path", type=Path, default=None)
@@ -526,6 +528,8 @@ def main() -> None:
         schema=schema,
         profiles=profiles_by_id,
         max_units_per_slot=args.max_units_per_slot,
+        random_low_disclosure_prob=args.random_low_disclosure_prob,
+        random_disclosure_seed=args.random_disclosure_seed,
     )
 
     records, requests, pending = run_online_replay(
@@ -550,6 +554,8 @@ def main() -> None:
             "max_profiles": args.max_profiles,
             "max_turns": args.max_turns,
             "max_units_per_slot": args.max_units_per_slot,
+            "random_low_disclosure_prob": args.random_low_disclosure_prob,
+            "random_disclosure_seed": args.random_disclosure_seed,
             "patient_controller_version": args.patient_controller_version,
             "provider": args.provider,
             "model_output_path": str(args.model_output_path) if args.model_output_path else None,

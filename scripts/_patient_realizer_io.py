@@ -99,6 +99,21 @@ def severity_instruction(severity: str, low_info_category: str) -> str:
             "Reference/informative: answer naturally and clearly. Include the allowed evidence as much as possible, "
             "but avoid robotic listing or exact repetition."
         )
+    if severity == "fully_cooperative":
+        return (
+            "Fully cooperative: answer naturally and clearly. Include the allowed evidence as much as possible, "
+            "stay responsive to the doctor question, and do not add facts beyond the provided evidence."
+        )
+    if severity == "random_disclosure":
+        if low_info_category == "informative_reference":
+            return (
+                "Random disclosure, low-disclosure not triggered this turn: answer cooperatively and include the allowed evidence "
+                "as much as possible without robotic listing or invented details."
+            )
+        return (
+            "Random disclosure, probabilistic low-disclosure triggered this turn: answer relevantly but with partial, vague, "
+            "uncertain, or bounded disclosure according to the allowed/weakened evidence."
+        )
     if severity == "mild_low_info":
         return (
             "Mild low-information: answer relevantly, but omit some details. The answer should feel natural and slightly incomplete."
