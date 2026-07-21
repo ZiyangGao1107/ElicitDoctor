@@ -43,6 +43,14 @@ SEVERE_SAFE_CUE_PHRASES = [
     "可以先跳过",
 ]
 
+EN_SEVERE_SAFE_CUE_PHRASES = [
+    "I am not sure how to explain that",
+    "I do not really want to go into detail",
+    "I do not know how to answer that",
+    "Could we come back to that later",
+    "It is hard to talk about",
+]
+
 
 def iter_jsonl(path: Path):
     with path.open("r", encoding="utf-8") as f:
@@ -356,7 +364,7 @@ def build_visibility_contract(
     }
 
 
-def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> list[dict[str, str]]:
+def build_messages(record: dict[str, Any], history: list[dict[str, str]], language: str = "zh") -> list[dict[str, str]]:
     retained_units = units_by_ids(record, record.get("retained_unit_ids") or [])
     weakened_units = units_by_ids(record, record.get("weakened_unit_ids") or [])
     severity = str(record.get("base_severity") or "")
@@ -366,6 +374,13 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> lis
         retained_units=retained_units,
         weakened_units=weakened_units,
     )
+    if language == "en" and "low_information_boundary" in visibility_contract:
+        visibility_contract["low_information_boundary"]["allowed_response_templates"] = [
+            "I am not sure how to explain that right now.",
+            "I cannot really make it clear yet.",
+            "Could we skip that for now?",
+            "I do not know how to answer that right now.",
+        ]
     disclosure_stage = (
         visibility_contract.get("progressive_disclosure_stage")
         if severity == "severe_low_info"
@@ -377,10 +392,12 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> lis
         if severity == "severe_low_info"
         else record.get("target_tree_node")
     )
+    response_language = "English" if language == "en" else "Chinese"
     hard_constraints = [
         "Use first-person patient language.",
         "Return only JSON.",
         "The patient_response must be the only patient-facing text.",
+        f"Write the patient_response in natural {response_language}.",
         "Do not add symptoms, durations, plans, behaviors, diagnoses, or risks not present in the visibility_contract.",
         "Do not reveal details that are not authorized by the visibility_contract.",
         "Do not infer facts from the doctor question or hidden history placeholders.",
@@ -398,10 +415,11 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> lis
             "The patient_response must not contain these forbidden surface terms or close synonyms: "
             + ", ".join(str(term) for term in forbidden_terms)
         )
+    safe_cue_phrases = EN_SEVERE_SAFE_CUE_PHRASES if language == "en" else SEVERE_SAFE_CUE_PHRASES
     if severity == "severe_low_info":
         hard_constraints.append(
             "For severe_low_info, patient_response must include at least one exact boundary/vague cue phrase: "
-            + ", ".join(SEVERE_SAFE_CUE_PHRASES)
+            + ", ".join(safe_cue_phrases)
         )
     if disclosure_stage == "boundary_only":
         hard_constraints.append(
@@ -425,13 +443,13 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> lis
             budget["required_style"] = "one weak non-specific hint at most"
     system = (
         "You are a patient-response realizer for a controlled psychiatric inquiry simulation. "
-        "You must write one natural Chinese patient reply. Follow the JSON visibility contract exactly. "
+        f"You must write one natural {response_language} patient reply. Follow the JSON visibility contract exactly. "
         "Facts not present in can_say_exact or can_paraphrase_weakly are not known to the patient response. "
         "If the contract is severe_low_info, the exact evidence text is intentionally hidden; do not guess it. "
         "Do not mention evidence units, metadata, slots, verifier rules, state variables, or this contract."
     )
     user = {
-        "task": "Generate one natural Chinese patient response.",
+        "task": f"Generate one natural {response_language} patient response.",
         "doctor_question": clean_text(record.get("doctor_question")),
         "recent_dialogue_history": render_history(history),
         "history_sanitization_note": (
@@ -448,7 +466,7 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> lis
         "response_budget": budget,
         "hard_constraints": hard_constraints,
         "output_format": {
-            "patient_response": "natural Chinese response",
+            "patient_response": f"natural {response_language} response",
             "brief_self_check": "short note that no new facts were added",
         },
     }
@@ -467,6 +485,18 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]]) -> lis
                 "我的睡眠不太正常。",
             ],
         }
+    if language == "en" and "empty_evidence_response_policy" in user:
+        user["empty_evidence_response_policy"]["safe_examples"] = [
+            "I am not sure how to explain that right now.",
+            "I do not really know how to answer that yet.",
+            "Could we come back to that later?",
+        ]
+        user["empty_evidence_response_policy"]["unsafe_examples"] = [
+            "I have been eating a lot more lately.",
+            "Some strange things have been happening.",
+            "My sleep has not been normal.",
+        ]
+
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": json.dumps(user, ensure_ascii=False, indent=2)},
@@ -482,6 +512,8 @@ def build_requests(
     max_requests: int | None,
     max_requests_per_cell: int | None,
     sample_seed: int | None,
+    dataset_prefix: str,
+    language: str,
 ) -> list[dict[str, Any]]:
     records = list(iter_jsonl(trajectory_path))
     histories = scenario_histories(records)
@@ -524,7 +556,7 @@ def build_requests(
         requests.append(
             {
                 "request_id": request_id,
-                "task_name": "mdd5k_llm_patient_realizer",
+                "task_name": f"{dataset_prefix}_llm_patient_realizer",
                 "prompt_protocol_version": "llm_patient_realizer_pcv3_2_json_contract_v3_prompt_hardened",
                 "history_mode": "doctor_history_only_patient_text_hidden",
                 "source_trajectory_file": str(trajectory_path),
@@ -543,7 +575,7 @@ def build_requests(
                 "controller_response_type": record.get("response_type"),
                 "is_rapport_or_permission_turn": bool(record.get("is_rapport_or_permission_turn")),
                 "pcv3_1_routing_source": record.get("pcv3_1_routing_source"),
-                "messages": build_messages(record, histories.get(turn_key, [])),
+                "messages": build_messages(record, histories.get(turn_key, []), language=language),
                 "model_visible_fields": ["messages"],
                 "hidden_verifier_metadata_not_for_realizer": {
                     "retained_units": retained_units,
@@ -567,7 +599,7 @@ def build_requests(
                     "cross_turn_patient_state": record.get("cross_turn_patient_state"),
                 },
                 "expected_output": {
-                    "patient_response": "natural Chinese response constrained by allowed evidence",
+                    "patient_response": f"natural {'English' if language == 'en' else 'Chinese'} response constrained by allowed evidence",
                     "brief_self_check": "short no-new-fact self check",
                 },
             }
@@ -576,6 +608,7 @@ def build_requests(
 
 
 def write_protocol(path: Path, request_path: Path, summary: dict[str, Any]) -> None:
+    response_language = "English" if summary.get("language") == "en" else "Chinese"
     lines = [
         "# LLM Patient Realizer Request Protocol V3.1",
         "",
@@ -588,7 +621,7 @@ def write_protocol(path: Path, request_path: Path, summary: dict[str, Any]) -> N
         "## Division of Labor",
         "",
         "- Controller decides target slot, retained evidence, weakened evidence, removed evidence, and low-information category.",
-        "- LLM realizer only verbalizes allowed/weakened evidence in natural Chinese.",
+        f"- LLM realizer only verbalizes allowed/weakened evidence in natural {response_language}.",
         "- Rule-based verifier checks hard constraints before a response can replace the deterministic fallback.",
         "- Previous patient responses are hidden from the LLM prompt to prevent history-induced evidence leakage.",
         "- If no evidence unit is allowed, the LLM must produce a non-factual low-information reply.",
@@ -627,6 +660,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-requests", type=int, default=80)
     parser.add_argument("--max-requests-per-cell", type=int, default=2)
     parser.add_argument("--sample-seed", type=int, default=17)
+    parser.add_argument("--dataset-prefix", default="mdd5k")
+    parser.add_argument("--language", choices=["zh", "en"], default="zh")
     return parser.parse_args()
 
 
@@ -643,13 +678,17 @@ def main() -> None:
         max_requests=max_requests,
         max_requests_per_cell=max_requests_per_cell,
         sample_seed=args.sample_seed,
+        dataset_prefix=args.dataset_prefix,
+        language=args.language,
     )
-    request_path = args.output_dir / "mdd5k_llm_patient_realizer_requests.jsonl"
-    summary_path = args.output_dir / "mdd5k_llm_patient_realizer_request_summary.json"
+    request_path = args.output_dir / f"{args.dataset_prefix}_llm_patient_realizer_requests.jsonl"
+    summary_path = args.output_dir / f"{args.dataset_prefix}_llm_patient_realizer_request_summary.json"
     protocol_path = args.output_dir / "LLM_PATIENT_REALIZER_REQUEST_PROTOCOL_V3_1.md"
     write_jsonl(request_path, requests)
     summary = {
         "num_requests": len(requests),
+        "dataset_prefix": args.dataset_prefix,
+        "language": args.language,
         "trajectory_path": str(args.trajectory_path),
         "request_path": str(request_path),
         "protocol_path": str(protocol_path),

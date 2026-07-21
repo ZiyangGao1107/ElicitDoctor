@@ -94,6 +94,16 @@ def render_history(history: list[dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
+def render_history_en(history: list[dict[str, str]]) -> str:
+    if not history:
+        return "No prior dialogue yet."
+    lines = []
+    for idx, turn in enumerate(history, start=1):
+        lines.append(f"{idx}. Doctor: {turn.get('doctor_utterance', '')}")
+        lines.append(f"   Patient: {turn.get('patient_utterance', '')}")
+    return "\n".join(lines)
+
+
 def render_v6_history(history: list[dict[str, str]], max_turns: int = 8) -> str:
     if not history:
         return "（尚无对话历史）"
@@ -122,7 +132,32 @@ def render_reward_centered_v6_prompt(history: list[dict[str, str]], max_turns: i
     )
 
 
-def build_messages(policy_name: str, history: list[dict[str, str]]) -> list[dict[str, str]]:
+def build_closed_llm_messages_en(policy_name: str, history: list[dict[str, str]]) -> list[dict[str, str]]:
+    if policy_name == "closed_llm_evidence_aware":
+        system = (
+            "You are a mental-health intake doctor. Your task is to actively gather "
+            "information relevant to depression screening across a multi-turn dialogue. "
+            "If the patient's previous answer was vague, avoidant, too short, or insufficient, "
+            "ask a focused follow-up about frequency, duration, severity, functional impact, "
+            "or a concrete example. Ask exactly one natural, concise, non-judgmental question. "
+            "Do not diagnose, summarize, explain, or mention hidden evaluation slots."
+        )
+    else:
+        system = (
+            "You are a mental-health intake doctor. Your task is to actively gather "
+            "information relevant to depression screening across a multi-turn dialogue. "
+            "Ask exactly one natural, concise, non-judgmental question. Do not diagnose, "
+            "summarize, explain, or mention hidden evaluation slots."
+        )
+    user = (
+        "Based only on the visible dialogue history below, generate the doctor's next question.\n\n"
+        f"{render_history_en(history)}\n\n"
+        "Output requirement: write exactly one English question, with no numbering, diagnosis, explanation, or extra text."
+    )
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+def build_messages(policy_name: str, history: list[dict[str, str]], language: str = "zh") -> list[dict[str, str]]:
     if policy_name == "reward_centered_v6_patient_v2":
         prompt = render_reward_centered_v6_prompt(history, max_turns=8)
         return [{"role": "user", "content": prompt}]
@@ -152,6 +187,9 @@ def build_messages(policy_name: str, history: list[dict[str, str]]) -> list[dict
         prompt = render_boundary_aware_v5_prompt(boundary_history, max_history_turns=8)
         return [{"role": "user", "content": prompt}]
 
+    if language == "en":
+        return build_closed_llm_messages_en(policy_name, history)
+
     policy = POLICY_PROMPTS[policy_name]
     user = (
         "请根据以下对话历史，生成下一句医生问题。\n\n"
@@ -169,6 +207,7 @@ def build_initial_requests(
     profiles: list[dict[str, Any]],
     severities: list[str],
     policies: list[str],
+    language: str = "zh",
 ) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for profile in profiles:
@@ -185,9 +224,9 @@ def build_initial_requests(
                         "base_severity": severity,
                         "turn_index": 0,
                         "dialogue_history": [],
-                        "messages": build_messages(policy_name, []),
+                        "messages": build_messages(policy_name, [], language=language),
                         "expected_output": {
-                            "doctor_question": "one natural-language Chinese question",
+                            "doctor_question": f"one natural-language {'English' if language == 'en' else 'Chinese'} question",
                         },
                         "doctor_visible_fields": ["dialogue_history"],
                         "hidden_eval_metadata_not_for_model": [
@@ -263,6 +302,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-groups", type=int, default=90)
     parser.add_argument("--max-per-slot", type=int, default=5)
     parser.add_argument("--max-profiles", type=int, default=27)
+    parser.add_argument("--dataset-prefix", default="mdd5k")
+    parser.add_argument("--language", choices=["zh", "en"], default="zh")
     parser.add_argument(
         "--severities",
         nargs="+",
@@ -291,9 +332,10 @@ def main() -> None:
         profiles=profiles,
         severities=severities,
         policies=args.policies,
+        language=args.language,
     )
 
-    request_path = args.output_dir / "mdd5k_llm_doctor_initial_requests.jsonl"
+    request_path = args.output_dir / f"{args.dataset_prefix}_llm_doctor_initial_requests.jsonl"
     protocol_path = args.output_dir / "LLM_DOCTOR_BASELINE_REQUEST_PROTOCOL_V1.md"
     write_jsonl(request_path, requests)
     write_protocol(protocol_path, request_path, len(requests))
@@ -302,6 +344,8 @@ def main() -> None:
             {
                 "num_requests": len(requests),
                 "num_profiles": len(profiles),
+                "dataset_prefix": args.dataset_prefix,
+                "language": args.language,
                 "severities": severities,
                 "policies": args.policies,
                 "request_path": str(request_path),

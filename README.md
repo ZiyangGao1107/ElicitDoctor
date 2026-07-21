@@ -66,6 +66,20 @@ profile splits are stored under `data/`. Large JSONL files are tracked with Git
 LFS. Generated model outputs, logs, checkpoints, and closed-source API traces are
 not part of the release package.
 
+DAIC-WoZ and Extended-DAIC are supported by the same profile-grounded simulator
+contract, but the DAIC data itself should be transferred privately under the
+original DAIC release terms. Place the prepared private copy at `data/daic/` and
+run:
+
+```bash
+python scripts/build_daic_profile_environment.py
+```
+
+This builds DAIC as a PHQ-8 task with exactly eight symptom slots and exactly
+two diagnosis labels: `Depressed` and `control`. DAIC-WoZ `train` is used for
+training, DAIC-WoZ `valid` is used for validation/model selection, and all
+Extended-DAIC rows are used only as `test`.
+
 See `docs/dataset_card.md` for the expected JSONL schemas and release policy.
 
 ## Closed-Source Doctor Baselines
@@ -80,6 +94,22 @@ inside that run; do not reuse patient caches or doctor-output JSONL files across
 models, runs, splits, or turn budgets.
 
 See `docs/closed_llm_doctor_eval.md`.
+
+For DAIC closed-source doctor evaluation, use the same runner and set the
+dataset environment variables:
+
+```bash
+export DATASET_PREFIX=daic
+export LANGUAGE=en
+export EVAL_SPLITS=test
+export MAX_PROFILES=219
+export MAX_GROUPS=1752
+export GROUP_DIR=data/daic/profile_split
+export CLOSED_PROVIDER=openai_compatible
+export CLOSED_MODEL=gpt-4.1-mini
+export CLOSED_ENV_FILE=.env
+bash scripts/run_final_patient_doctor_eval_one.sh closed_evidence outputs_daic_closed_eval 24
+```
 
 ## Minimal Environment
 

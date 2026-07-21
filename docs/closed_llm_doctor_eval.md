@@ -110,6 +110,80 @@ If a run is interrupted, resume only with a recovery script that preserves the
 same output directory. Do not start a second independent baseline by pointing it
 at the first run's directory.
 
+## DAIC PHQ-8 Evaluation
+
+DAIC uses the same replay, patient-controller, realizer, verifier, cache, and
+canonical-recovery flow as MDD-5K. The only differences are the data paths,
+schema, language, split, and canonical prefix.
+
+Prepare the private DAIC copy under `data/daic/`, then normalize it to the
+PHQ-8 profile-grounded contract:
+
+```bash
+python scripts/build_daic_profile_environment.py
+```
+
+Expected DAIC task contract:
+
+- symptom slots: exactly the eight PHQ-8 items
+- labels: exactly `Depressed` and `control`
+- train: DAIC-WoZ train, used for training
+- valid: DAIC-WoZ validation, used for validation/model selection
+- test: all Extended-DAIC rows only; report final test results on this split
+- canonical denominator: 8 PHQ-8 item units per profile
+
+Run a closed-source doctor on DAIC test:
+
+```bash
+export DATASET_PREFIX=daic
+export LANGUAGE=en
+export EVAL_SPLITS=test
+export MAX_PROFILES=219
+export MAX_GROUPS=1752
+export MAX_PER_SLOT=999
+export MAX_TURNS=24
+export GROUP_DIR=data/daic/profile_split
+export PROFILE_PATH=data/daic/patient_profiles/daic_dialogue_derived_patient_profiles.jsonl
+export SCHEMA_PATH=schemas/daic_symptom_slot_schema.json
+export CANONICAL_DIR=data/daic/canonical_evidence
+export CANONICAL_PREFIX=daic
+
+export CLOSED_PROVIDER=openai_compatible
+export CLOSED_MODEL=gpt-4.1-mini
+export CLOSED_ENV_FILE=.env
+
+bash scripts/run_final_patient_doctor_eval_one.sh \
+  closed_evidence outputs_daic_closed_gpt41mini_turn24 24
+```
+
+`--provider cached` in `run_llm_doctor_online_replay.py` does not choose the
+closed-source model. It only tells replay to read already generated doctor
+questions. The closed-source doctor is chosen by
+`call_closed_llm_for_pending_requests.py` through `CLOSED_PROVIDER` and
+`CLOSED_MODEL`, or by the one-model runner above.
+
+For a local DAIC smoke test without API calls:
+
+```bash
+python scripts/run_llm_doctor_online_replay.py \
+  --profiles data/daic/patient_profiles/daic_dialogue_derived_patient_profiles.jsonl \
+  --schema schemas/daic_symptom_slot_schema.json \
+  --group-dir data/daic/profile_split \
+  --dataset-prefix daic \
+  --language en \
+  --splits valid \
+  --max-groups 1 \
+  --max-per-slot 1 \
+  --max-profiles 1 \
+  --max-turns 2 \
+  --patient-controller-version v3_2 \
+  --provider scripted \
+  --missing-output-policy scripted \
+  --severities mild_low_info \
+  --policies closed_llm_general \
+  --output-dir outputs_daic_smoke
+```
+
 ## Main Scripts
 
 - `scripts/call_closed_llm_for_pending_requests.py`: generic closed-source

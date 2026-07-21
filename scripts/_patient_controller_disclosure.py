@@ -20,6 +20,7 @@ from _patient_controller_base import (
     DynamicPatientControllerV1,
     contains_any,
     iter_jsonl,
+    load_group_records,
     make_initial_question,
     make_response_text,
     make_second_targeted_followup_question,
@@ -576,17 +577,6 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
 
 def load_profiles(path: Path) -> dict[str, dict[str, Any]]:
     return {record["profile_id"]: record for record in iter_jsonl(path)}
-
-
-def load_group_records(group_dir: Path, splits: list[str]) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    for split in splits:
-        path = group_dir / f"mdd5k_profile_grounded_environment_{split}_groups.jsonl"
-        for record in iter_jsonl(path):
-            record = dict(record)
-            record["split"] = split
-            records.append(record)
-    return records
 
 
 def build_pilot_records(

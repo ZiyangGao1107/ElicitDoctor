@@ -89,6 +89,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Fill remaining failed records with source_rule_based_patient_response for 100% cache coverage.",
     )
+    parser.add_argument("--dataset-prefix", default="mdd5k")
     return parser.parse_args()
 
 
@@ -165,9 +166,10 @@ def main() -> None:
     suffix = "include_warned" if args.include_warned else "clean_only"
     if args.fallback_to_rule:
         suffix += "_with_rule_fallback"
-    cache_path = args.output_dir / f"mdd5k_verified_patient_response_cache_repair_{suffix}.jsonl"
-    summary_path = args.output_dir / f"mdd5k_verified_patient_response_cache_repair_summary_{suffix}.json"
+    cache_path = args.output_dir / f"{args.dataset_prefix}_verified_patient_response_cache_repair_{suffix}.jsonl"
+    summary_path = args.output_dir / f"{args.dataset_prefix}_verified_patient_response_cache_repair_summary_{suffix}.json"
     summary = {
+        "dataset_prefix": args.dataset_prefix,
         "primary_request_path": str(args.primary_request_path),
         "primary_verification_records": str(args.primary_verification_records),
         "repair_request_path": str(args.repair_request_path) if args.repair_request_path else None,

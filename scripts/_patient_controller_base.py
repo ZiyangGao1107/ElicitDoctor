@@ -698,7 +698,15 @@ def load_profiles(path: Path) -> dict[str, dict[str, Any]]:
 def load_group_records(group_dir: Path, splits: list[str]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for split in splits:
-        path = group_dir / f"mdd5k_profile_grounded_environment_{split}_groups.jsonl"
+        candidates = [
+            group_dir / f"mdd5k_profile_grounded_environment_{split}_groups.jsonl",
+            group_dir / f"daic_profile_grounded_environment_{split}_groups.jsonl",
+        ]
+        candidates.extend(sorted(group_dir.glob(f"*_profile_grounded_environment_{split}_groups.jsonl")))
+        path = next((candidate for candidate in candidates if candidate.exists()), None)
+        if path is None:
+            expected = ", ".join(str(candidate) for candidate in candidates[:2])
+            raise FileNotFoundError(f"No profile-grounded group file for split={split}. Tried: {expected}")
         for record in iter_jsonl(path):
             record = dict(record)
             record["split"] = split

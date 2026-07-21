@@ -253,6 +253,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--include-warned", action="store_true", help="Repair warned accepted records as well as hard failures.")
     parser.add_argument("--max-repairs", type=int, default=0, help="0 means all failed records.")
+    parser.add_argument("--dataset-prefix", default="mdd5k")
     return parser.parse_args()
 
 
@@ -286,9 +287,10 @@ def main() -> None:
         if args.max_repairs and len(repair_requests) >= args.max_repairs:
             break
 
-    request_path = args.output_dir / "mdd5k_llm_patient_realizer_repair_requests.jsonl"
-    summary_path = args.output_dir / "mdd5k_llm_patient_realizer_repair_request_summary.json"
+    request_path = args.output_dir / f"{args.dataset_prefix}_llm_patient_realizer_repair_requests.jsonl"
+    summary_path = args.output_dir / f"{args.dataset_prefix}_llm_patient_realizer_repair_request_summary.json"
     summary = {
+        "dataset_prefix": args.dataset_prefix,
         "source_request_path": str(args.request_path),
         "source_verification_records": str(args.verification_records),
         "repair_request_path": str(request_path),

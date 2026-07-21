@@ -19,6 +19,12 @@ SEVERITIES="${SEVERITIES:-mild_low_info moderate_low_info severe_low_info}"
 RANDOM_LOW_DISCLOSURE_PROB="${RANDOM_LOW_DISCLOSURE_PROB:-0.5}"
 RANDOM_DISCLOSURE_SEED="${RANDOM_DISCLOSURE_SEED:-0}"
 GROUP_DIR="${GROUP_DIR:-}"
+DATASET_PREFIX="${DATASET_PREFIX:-mdd5k}"
+LANGUAGE="${LANGUAGE:-}"
+PROFILE_PATH="${PROFILE_PATH:-}"
+SCHEMA_PATH="${SCHEMA_PATH:-}"
+CANONICAL_PREFIX="${CANONICAL_PREFIX:-$DATASET_PREFIX}"
+CANONICAL_DIR="${CANONICAL_DIR:-}"
 REPLAY_BATCH_SIZE="${REPLAY_BATCH_SIZE:-8}"
 REALIZER_BATCH_SIZE="${REALIZER_BATCH_SIZE:-4}"
 CLOSED_MODEL="${CLOSED_MODEL:-gpt-4.1-mini}"
@@ -37,10 +43,40 @@ cd "$PHASE_DIR"
 export PYTHONPATH="$PWD/scripts:${PYTHONPATH:-}"
 
 if [[ -z "$GROUP_DIR" ]]; then
-  if [[ -d "$PHASE_DIR/data/f32_f41_profile_split" ]]; then
+  if [[ -d "$PHASE_DIR/data/${DATASET_PREFIX}/profile_split" ]]; then
+    GROUP_DIR="data/${DATASET_PREFIX}/profile_split"
+  elif [[ -d "$PHASE_DIR/data/f32_f41_profile_split" ]]; then
     GROUP_DIR="data/f32_f41_profile_split"
   else
     GROUP_DIR="outputs_f32_f41_single_label_stratified_profile_split_v1"
+  fi
+fi
+if [[ -z "$PROFILE_PATH" ]]; then
+  if [[ "$DATASET_PREFIX" == "daic" && -f "$PHASE_DIR/data/daic/patient_profiles/daic_dialogue_derived_patient_profiles.jsonl" ]]; then
+    PROFILE_PATH="data/daic/patient_profiles/daic_dialogue_derived_patient_profiles.jsonl"
+  else
+    PROFILE_PATH="data/patient_profiles/mdd5k_dialogue_derived_patient_profiles.jsonl"
+  fi
+fi
+if [[ -z "$SCHEMA_PATH" ]]; then
+  if [[ "$DATASET_PREFIX" == "daic" && -f "$PHASE_DIR/schemas/daic_symptom_slot_schema.json" ]]; then
+    SCHEMA_PATH="schemas/daic_symptom_slot_schema.json"
+  else
+    SCHEMA_PATH="schemas/mdd5k_symptom_slot_schema.json"
+  fi
+fi
+if [[ -z "$LANGUAGE" ]]; then
+  if [[ "$DATASET_PREFIX" == "daic" ]]; then
+    LANGUAGE="en"
+  else
+    LANGUAGE="zh"
+  fi
+fi
+if [[ -z "$CANONICAL_DIR" ]]; then
+  if [[ -d "$PHASE_DIR/data/${DATASET_PREFIX}/canonical_evidence" ]]; then
+    CANONICAL_DIR="data/${DATASET_PREFIX}/canonical_evidence"
+  elif [[ "$DATASET_PREFIX" == "mdd5k" && -d "$PHASE_DIR/data/tree_aligned_canonical_evidence" ]]; then
+    CANONICAL_DIR="data/tree_aligned_canonical_evidence"
   fi
 fi
 
@@ -132,6 +168,7 @@ GLOBAL_CACHE_SUMMARY="$OUT/online_patient_work/current_verified_patient_cache_su
 
 echo "=== PCV3.2 online final-patient doctor eval start $(date) model=$MODEL_KEY out=$OUT ===" | tee "$MAIN_LOG"
 echo "max_turns=$MAX_TURNS max_groups=$MAX_GROUPS max_profiles=$MAX_PROFILES max_per_slot=$MAX_PER_SLOT eval_splits=$EVAL_SPLITS group_dir=$GROUP_DIR" | tee -a "$MAIN_LOG"
+echo "dataset_prefix=$DATASET_PREFIX language=$LANGUAGE profile_path=$PROFILE_PATH schema_path=$SCHEMA_PATH canonical_dir=$CANONICAL_DIR canonical_prefix=$CANONICAL_PREFIX" | tee -a "$MAIN_LOG"
 echo "severities=$SEVERITIES random_low_disclosure_prob=$RANDOM_LOW_DISCLOSURE_PROB random_disclosure_seed=$RANDOM_DISCLOSURE_SEED" | tee -a "$MAIN_LOG"
 
 run_replay() {
@@ -147,7 +184,11 @@ run_replay() {
   fi
   "$PY" scripts/run_llm_doctor_online_replay.py \
     --output-dir "$out_dir" \
+    --profiles "$PROFILE_PATH" \
+    --schema "$SCHEMA_PATH" \
     --group-dir "$GROUP_DIR" \
+    --dataset-prefix "$DATASET_PREFIX" \
+    --language "$LANGUAGE" \
     --splits $EVAL_SPLITS \
     --max-groups "$MAX_GROUPS" \
     --max-per-slot "$MAX_PER_SLOT" \
@@ -224,13 +265,15 @@ generate_patient_cache_for_probe() {
   local work="$OUT/online_patient_work/iter_${iter}"
   mkdir -p "$work"
   local all_req_dir="$work/01_all_requests"
-  local req_path="$all_req_dir/mdd5k_llm_patient_realizer_requests.jsonl"
-  local missing_req="$work/02_missing_requests/mdd5k_llm_patient_realizer_requests.jsonl"
+  local req_path="$all_req_dir/${DATASET_PREFIX}_llm_patient_realizer_requests.jsonl"
+  local missing_req="$work/02_missing_requests/${DATASET_PREFIX}_llm_patient_realizer_requests.jsonl"
   local missing_summary="$work/02_missing_requests/filter_summary.json"
 
   "$PY" scripts/prepare_patient_realizer_requests.py \
     --trajectory-path "$probe_records" \
     --output-dir "$all_req_dir" \
+    --dataset-prefix "$DATASET_PREFIX" \
+    --language "$LANGUAGE" \
     --max-requests 0 \
     --max-requests-per-cell 0 \
     --sample-seed 909
@@ -271,12 +314,13 @@ generate_patient_cache_for_probe() {
     --request-path "$missing_req" \
     --output-path "$primary_out" \
     --report-dir "$primary_verify_dir" \
+    --dataset-prefix "$DATASET_PREFIX" \
     --leak-threshold 0.72 \
     --allowed-threshold 0.45 \
     --reference-min-coverage 0.30 \
     --severe-max-coverage 0.45
 
-  local primary_verify="$primary_verify_dir/mdd5k_patient_realizer_verification_records_llm_outputs.jsonl"
+  local primary_verify="$primary_verify_dir/${DATASET_PREFIX}_patient_realizer_verification_records_llm_outputs.jsonl"
   local repair_req_files=()
   local repair_verify_files=()
   local source_req="$missing_req"
@@ -287,8 +331,9 @@ generate_patient_cache_for_probe() {
     "$PY" scripts/prepare_patient_realizer_repair_requests.py \
       --request-path "$source_req" \
       --verification-records "$source_verify" \
-      --output-dir "$repair_req_dir"
-    local repair_req="$repair_req_dir/mdd5k_llm_patient_realizer_repair_requests.jsonl"
+      --output-dir "$repair_req_dir" \
+      --dataset-prefix "$DATASET_PREFIX"
+    local repair_req="$repair_req_dir/${DATASET_PREFIX}_llm_patient_realizer_repair_requests.jsonl"
     local repair_n
     repair_n=$(pending_count "$repair_req")
     echo "repair_round_${repair_round}_requests=${repair_n}" | tee -a "$MAIN_LOG"
@@ -317,11 +362,12 @@ generate_patient_cache_for_probe() {
       --request-path "$repair_req" \
       --output-path "$repair_out" \
       --report-dir "$repair_verify_dir" \
+      --dataset-prefix "$DATASET_PREFIX" \
       --leak-threshold 0.72 \
       --allowed-threshold 0.45 \
       --reference-min-coverage 0.30 \
       --severe-max-coverage 0.45
-    local repair_verify="$repair_verify_dir/mdd5k_patient_realizer_verification_records_llm_outputs.jsonl"
+    local repair_verify="$repair_verify_dir/${DATASET_PREFIX}_patient_realizer_verification_records_llm_outputs.jsonl"
     repair_req_files+=("$repair_req")
     repair_verify_files+=("$repair_verify")
     source_req="$repair_req"
@@ -361,9 +407,10 @@ PY
     --primary-verification-records "$primary_verify" \
     "${repair_args[@]}" \
     --output-dir "$build_dir" \
+    --dataset-prefix "$DATASET_PREFIX" \
     --include-warned
 
-  local new_cache="$build_dir/mdd5k_verified_patient_response_cache_repair_include_warned.jsonl"
+  local new_cache="$build_dir/${DATASET_PREFIX}_verified_patient_response_cache_repair_include_warned.jsonl"
   local new_cache_n
   new_cache_n=$(pending_count "$new_cache")
   if [[ "$new_cache_n" -lt "$missing_n" ]]; then
@@ -389,7 +436,7 @@ for ITER in $(seq 1 $((MAX_TURNS + 1))); do
     run_replay "$OUT" rule fallback "$GLOBAL_CACHE" stop cached >"$OUT/replay_actual_before_iter_${ITER}.log" 2>&1
   fi
 
-  PENDING="$OUT/mdd5k_llm_doctor_online_replay_pending_requests.jsonl"
+  PENDING="$OUT/${DATASET_PREFIX}_llm_doctor_online_replay_pending_requests.jsonl"
   N=$(pending_count "$PENDING")
   echo "doctor_pending=${N}" | tee -a "$MAIN_LOG"
   if [[ "$N" -eq 0 ]]; then
@@ -403,7 +450,7 @@ for ITER in $(seq 1 $((MAX_TURNS + 1))); do
   PROBE_DIR="$OUT/online_patient_work/probe_iter_${ITER}"
   rm -rf "$PROBE_DIR"
   run_replay "$PROBE_DIR" rule fallback "$GLOBAL_CACHE" stop cached >"$OUT/probe_iter_${ITER}.log" 2>&1
-  PROBE_RECORDS="$PROBE_DIR/mdd5k_llm_doctor_online_replay_records.jsonl"
+  PROBE_RECORDS="$PROBE_DIR/${DATASET_PREFIX}_llm_doctor_online_replay_records.jsonl"
   if [[ ! -s "$PROBE_RECORDS" ]]; then
     echo "Missing probe records at $PROBE_RECORDS" >&2
     exit 31
@@ -416,9 +463,16 @@ done
 
 echo "=== canonical analysis start $(date) ===" | tee -a "$MAIN_LOG"
 ANALYSIS_OUT="$OUT/tree_aligned_canonical_recovery"
+ANALYSIS_ARGS=(
+  --records "${MODEL_KEY}=$OUT/${DATASET_PREFIX}_llm_doctor_online_replay_records.jsonl"
+  --output-dir "$ANALYSIS_OUT"
+  --canonical-prefix "$CANONICAL_PREFIX"
+)
+if [[ -n "$CANONICAL_DIR" ]]; then
+  ANALYSIS_ARGS+=(--canonical-dir "$CANONICAL_DIR")
+fi
 "$PY" scripts/analyze_tree_aligned_canonical_evidence_recovery.py \
-  --records "${MODEL_KEY}=$OUT/mdd5k_llm_doctor_online_replay_records.jsonl" \
-  --output-dir "$ANALYSIS_OUT" \
+  "${ANALYSIS_ARGS[@]}" \
   >"$OUT/canonical_analysis.log" 2>&1
 
 "$PY" - "$MODEL_KEY" "$ANALYSIS_OUT" "$OUT" <<'PY'
@@ -442,7 +496,7 @@ for row in obj.get("results", obj.get("summary", [])):
 print(json.dumps(rows, ensure_ascii=False, indent=2))
 PY
 
-"$PY" - "$OUT/mdd5k_llm_doctor_online_replay_records.jsonl" <<'PY'
+"$PY" - "$OUT/${DATASET_PREFIX}_llm_doctor_online_replay_records.jsonl" <<'PY'
 import collections
 import json
 import sys
