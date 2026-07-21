@@ -98,6 +98,18 @@ models, runs, splits, or turn budgets.
 
 See `docs/closed_llm_doctor_eval.md`.
 
+For MDD-5K closed-source doctor evaluation with the cooperative
+zero-avoidance patient setting, keep the default MDD paths and set only the
+patient-setting environment variable:
+
+```bash
+export CLOSED_PROVIDER=openai_compatible
+export CLOSED_MODEL=gpt-4.1-mini
+export CLOSED_ENV_FILE=.env
+export SEVERITIES="zero_avoidance"
+bash scripts/run_final_patient_doctor_eval_one.sh closed_evidence outputs_mdd5k_closed_zero_avoidance 24
+```
+
 For DAIC closed-source doctor evaluation, use the same runner and set the
 dataset environment variables:
 

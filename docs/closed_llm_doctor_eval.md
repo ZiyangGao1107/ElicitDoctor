@@ -78,6 +78,18 @@ bash scripts/run_final_patient_doctor_eval_one.sh closed_evidence outputs_closed
 This evaluates the closed model as the doctor. The patient is still the frozen
 final patient simulator.
 
+For a MDD-5K closed-source doctor run that uses only the cooperative
+zero-avoidance patient setting, keep the default MDD-5K data paths and set:
+
+```bash
+export CLOSED_PROVIDER=openai_compatible
+export CLOSED_MODEL=gpt-4.1-mini
+export CLOSED_ENV_FILE=.env
+export SEVERITIES="zero_avoidance"
+bash scripts/run_final_patient_doctor_eval_one.sh \
+  closed_evidence outputs_mdd5k_closed_zero_avoidance 24
+```
+
 To evaluate the added disclosure settings with the same runner, keep the model
 configuration unchanged and override only the patient setting variables:
 
