@@ -307,7 +307,10 @@ def verify_one(
     if severity in {"reference_informative", "zero_avoidance"} and visible_units and mean_allowed_coverage < reference_min_coverage:
         hard_errors.append("reference_under_informative")
     if severity == "zero_avoidance" and visible_units and vague_or_refusal:
-        hard_errors.append("zero_avoidance_refusal_or_deflection")
+        if mean_allowed_coverage < reference_min_coverage:
+            hard_errors.append("zero_avoidance_refusal_or_deflection")
+        else:
+            warnings.append("zero_avoidance_vague_cue_but_informative")
     if severity == "severe_low_info":
         if not visible_units and not vague_or_refusal:
             hard_errors.append("severe_missing_boundary_or_vagueness")
