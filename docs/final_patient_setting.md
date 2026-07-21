@@ -56,6 +56,10 @@ Severity changes the disclosure policy:
 - `fully_cooperative`: the patient is willing to answer clearly and does not
   actively terminate, while still staying inside the retained/weakened evidence
   allowed by the controller.
+- `zero_avoidance`: a cooperative-patient condition. The patient answers
+  truthfully from the available profile/evidence content, does not avoid,
+  deflect, minimize, or intentionally omit allowed evidence, and still does not
+  invent symptoms or details outside the allowed evidence.
 
 This does not mean the severe patient is permanently silent. After sufficient
 trust, repeated relevant follow-up, or high-quality supportive questioning, the
@@ -67,7 +71,7 @@ severe_low_info`. To run the added settings, pass them explicitly:
 ```bash
 python scripts/run_llm_doctor_online_replay.py \
   --patient-controller-version v3_2 \
-  --severities random_disclosure fully_cooperative \
+  --severities random_disclosure fully_cooperative zero_avoidance \
   --random-low-disclosure-prob 0.5 \
   --random-disclosure-seed 0
 ```

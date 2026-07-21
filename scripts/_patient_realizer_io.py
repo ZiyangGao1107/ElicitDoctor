@@ -104,6 +104,11 @@ def severity_instruction(severity: str, low_info_category: str) -> str:
             "Fully cooperative: answer naturally and clearly. Include the allowed evidence as much as possible, "
             "stay responsive to the doctor question, and do not add facts beyond the provided evidence."
         )
+    if severity == "zero_avoidance":
+        return (
+            "Zero-avoidance cooperative patient: answer truthfully from the allowed evidence, do not refuse or deflect, "
+            "and do not add any symptom, duration, frequency, cause, risk, or diagnosis not present in the allowed evidence."
+        )
     if severity == "random_disclosure":
         if low_info_category == "informative_reference":
             return (

@@ -87,6 +87,9 @@ Severity controls how quickly the patient opens up:
   allowed evidence budget.
 - fully_cooperative: answers as clearly as possible within the allowed evidence
   budget and does not actively terminate.
+- zero_avoidance: cooperative-patient condition; answers truthfully from the
+  available profile/evidence content, does not avoid or intentionally
+  under-disclose, and does not invent content outside the allowed evidence.
 
 ## Patient Realizer
 

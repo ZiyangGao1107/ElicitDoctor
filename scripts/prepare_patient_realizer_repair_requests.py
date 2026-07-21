@@ -118,6 +118,10 @@ def repair_instructions_for_errors(hard_errors: list[str]) -> list[str]:
         instructions.append(
             "The severe patient needs a natural boundary or uncertainty cue, without adding clinical details."
         )
+    if "zero_avoidance_refusal_or_deflection" in error_set:
+        instructions.append(
+            "The zero_avoidance cooperative patient must not refuse, deflect, or under-disclose allowed evidence; answer truthfully from the allowed evidence only."
+        )
     if not instructions:
         instructions.append("Repair the response by being shorter, less specific, and strictly grounded.")
     return instructions
@@ -186,6 +190,10 @@ def tighten_payload(payload: dict[str, Any], verification: dict[str, Any]) -> di
         constraints.append(
             "The repaired severe_low_info patient_response must include at least one exact boundary/vague cue phrase: "
             + ", ".join(SEVERE_SAFE_CUE_PHRASES)
+        )
+    if severity == "zero_avoidance":
+        constraints.append(
+            "The repaired zero_avoidance patient_response must be cooperative and truthful: do not refuse, deflect, or intentionally omit allowed evidence, and do not add facts beyond the visibility_contract."
         )
     payload["hard_constraints"] = constraints
 

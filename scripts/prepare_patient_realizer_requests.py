@@ -139,6 +139,13 @@ def severity_instruction(severity: str, low_info_category: str) -> str:
             "Fully cooperative: answer naturally and clearly. Include the allowed evidence as much as possible, "
             "stay responsive to the doctor question, and do not add facts beyond the provided evidence."
         )
+    if severity == "zero_avoidance":
+        return (
+            "Zero-avoidance cooperative patient: answer truthfully based on the provided allowed evidence. "
+            "Do not refuse, deflect, minimize, or intentionally omit allowed content. "
+            "If no evidence is allowed for this turn, say briefly that you do not have related content to add; "
+            "do not invent symptoms, frequency, duration, causes, or risks."
+        )
     if severity == "random_disclosure":
         if low_info_category == "informative_reference":
             return (
@@ -170,7 +177,7 @@ def severity_instruction(severity: str, low_info_category: str) -> str:
 
 
 def response_budget(severity: str, retained_count: int, weakened_count: int) -> dict[str, Any]:
-    if severity in {"reference_informative", "fully_cooperative"}:
+    if severity in {"reference_informative", "fully_cooperative", "zero_avoidance"}:
         return {
             "max_sentences": 4,
             "max_chinese_chars": 140,
@@ -433,6 +440,14 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]], langua
         hard_constraints.append(
             "Because progressive_disclosure_stage is one_weak_hint, at most one weak non-specific hint is allowed; do not give duration, frequency, or risk details."
         )
+    if severity == "zero_avoidance":
+        hard_constraints.extend(
+            [
+                "This is a zero-avoidance cooperative patient condition: do not refuse, deflect, or intentionally under-disclose allowed evidence.",
+                "Answer based only on can_say_exact and can_paraphrase_weakly; being cooperative does not permit adding facts.",
+                "If can_say_exact and can_paraphrase_weakly are empty, say briefly that you do not have related content to add.",
+            ]
+        )
     budget = response_budget(severity, len(retained_units), len(weakened_units))
     if severity == "severe_low_info":
         if disclosure_stage in {"boundary_only", "vague_hint_only"}:
@@ -496,6 +511,40 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]], langua
             "Some strange things have been happening.",
             "My sleep has not been normal.",
         ]
+    if severity == "zero_avoidance" and "empty_evidence_response_policy" in user:
+        user["empty_evidence_response_policy"] = {
+            "rule": "No factual clinical evidence is allowed for this turn.",
+            "must_do": (
+                "Answer cooperatively and truthfully that there is no related content to add from the provided evidence. "
+                "Do not refuse, deflect, or invent any symptom, behavior, risk, duration, frequency, cause, or diagnosis."
+            ),
+            "safe_examples": (
+                [
+                    "I do not have anything related to add about that.",
+                    "I do not think there is anything else on that point.",
+                    "Nothing like that comes up for me based on what I can say here.",
+                ]
+                if language == "en"
+                else [
+                    "这方面我没有更多相关情况可以补充。",
+                    "就这个问题来说，我没有别的相关内容。",
+                    "按我现在能说的情况，这方面没有更多信息。",
+                ]
+            ),
+            "unsafe_examples": (
+                [
+                    "I have been sleeping badly.",
+                    "I have been eating a lot more lately.",
+                    "I do not want to talk about that.",
+                ]
+                if language == "en"
+                else [
+                    "我的睡眠不太正常。",
+                    "最近我吃得很多。",
+                    "这个我不想说。",
+                ]
+            ),
+        }
 
     return [
         {"role": "system", "content": system},

@@ -35,6 +35,7 @@ RAPPORT_OR_PERMISSION_CUES = [
 ]
 
 OPEN_NARRATIVE_PATIENT_RESPONSES = {
+    "zero_avoidance": "可以，我会根据我的实际情况尽量如实说清楚。",
     "fully_cooperative": "可以，我会尽量说清楚。你可以先问你最需要了解的部分。",
     "random_disclosure": "可以，我可以先说一点。只是有些地方我可能一时还不太想展开。",
     "mild_low_info": "可以，我可以先慢慢说一点。最近整体确实不太舒服，但具体从哪说起我还有点乱。",

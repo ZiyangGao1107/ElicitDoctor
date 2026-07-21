@@ -90,9 +90,14 @@ Most shell scripts can be redirected to another machine by setting:
 
 The final-patient doctor runner also accepts disclosure-setting overrides:
 
-- `SEVERITIES`, for example `random_disclosure fully_cooperative`
+- `SEVERITIES`, for example `random_disclosure fully_cooperative zero_avoidance`
 - `RANDOM_LOW_DISCLOSURE_PROB`, used only by `random_disclosure`
 - `RANDOM_DISCLOSURE_SEED`, used only by `random_disclosure`
+
+Use `SEVERITIES=zero_avoidance` for the cooperative-patient condition. This is
+the zero-avoidance setting: the patient answers truthfully from the available
+profile/evidence content, does not avoid or intentionally under-disclose, and
+does not invent facts outside the allowed evidence.
 
 DAIC uses the same runner with dataset overrides:
 

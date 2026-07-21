@@ -57,7 +57,10 @@ repair-loop design.
 The default disclosure settings remain `mild_low_info`, `moderate_low_info`,
 and `severe_low_info`. Additional patient settings are available for controlled
 stress tests: `random_disclosure` with configurable
-`RANDOM_LOW_DISCLOSURE_PROB`, and `fully_cooperative`.
+`RANDOM_LOW_DISCLOSURE_PROB`, `fully_cooperative`, and `zero_avoidance`.
+`zero_avoidance` is the cooperative-patient condition: the patient answers
+truthfully from the profile/evidence content, does not avoid or intentionally
+under-disclose, and still cannot invent facts outside the allowed evidence.
 
 ## Data Policy
 

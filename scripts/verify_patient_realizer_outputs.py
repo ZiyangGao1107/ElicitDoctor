@@ -304,8 +304,10 @@ def verify_one(
     low_info_category = str(request.get("low_info_category") or "")
     vague_or_refusal = has_refusal_or_vague_cue(response)
 
-    if severity == "reference_informative" and visible_units and mean_allowed_coverage < reference_min_coverage:
+    if severity in {"reference_informative", "zero_avoidance"} and visible_units and mean_allowed_coverage < reference_min_coverage:
         hard_errors.append("reference_under_informative")
+    if severity == "zero_avoidance" and visible_units and vague_or_refusal:
+        hard_errors.append("zero_avoidance_refusal_or_deflection")
     if severity == "severe_low_info":
         if not visible_units and not vague_or_refusal:
             hard_errors.append("severe_missing_boundary_or_vagueness")

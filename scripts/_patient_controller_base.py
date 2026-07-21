@@ -39,6 +39,7 @@ DEFAULT_OUTPUT_DIR = BASE_DIR / "outputs_patient_controller_base"
 SEVERITIES = [
     "reference_informative",
     "fully_cooperative",
+    "zero_avoidance",
     "random_disclosure",
     "mild_low_info",
     "moderate_low_info",
@@ -104,6 +105,12 @@ def normalize_severity(level: str) -> str:
         "full": "fully_cooperative",
         "cooperative": "fully_cooperative",
         "full_cooperation": "fully_cooperative",
+        "zero": "zero_avoidance",
+        "zero_avoidance": "zero_avoidance",
+        "0_avoidance": "zero_avoidance",
+        "no_avoidance": "zero_avoidance",
+        "cooperative_patient": "zero_avoidance",
+        "truthful_cooperative": "zero_avoidance",
         "random": "random_disclosure",
         "random_low_info": "random_disclosure",
         "random_low_disclosure": "random_disclosure",
@@ -341,9 +348,12 @@ class DynamicPatientControllerV1:
                 "random_low_disclosure_triggered": False if severity == "random_disclosure" else None,
             }
 
-        if severity in {"reference_informative", "fully_cooperative"}:
+        if severity in {"reference_informative", "fully_cooperative", "zero_avoidance"}:
             budget = self._fully_cooperative_budget(total_units)
-            budget["disclosure_mode"] = "fully_cooperative" if severity == "fully_cooperative" else "reference"
+            if severity == "reference_informative":
+                budget["disclosure_mode"] = "reference"
+            else:
+                budget["disclosure_mode"] = severity
             return budget
 
         if severity == "random_disclosure":
@@ -520,8 +530,12 @@ class DynamicPatientControllerV1:
         )
 
         if not target_slot:
+            if severity == "zero_avoidance":
+                patient_response = "这个问题我没有相关内容可以补充。"
+            else:
+                patient_response = "这个我有点不知道怎么回答。"
             response = {
-                "patient_response": "这个我有点不知道怎么回答。",
+                "patient_response": patient_response,
                 "base_severity": severity,
                 "dynamic_stage": "unmapped_question",
                 "profile_id": profile_id,
@@ -625,6 +639,8 @@ class DynamicPatientControllerV1:
         dynamic_stage = "initial_low_info"
         if severity == "reference_informative":
             dynamic_stage = "reference"
+        elif severity == "zero_avoidance":
+            dynamic_stage = "zero_avoidance_cooperative"
         elif is_targeted_followup:
             dynamic_stage = "targeted_followup_recovery"
         elif is_generic_clarification:

@@ -45,7 +45,7 @@ def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
 
 def initial_disclosure_readiness(*, trait: str, severity: str) -> float:
     base = {"open": 0.72, "guarded": 0.50, "avoidant": 0.32}.get(trait, 0.50)
-    if severity == "fully_cooperative":
+    if severity in {"fully_cooperative", "zero_avoidance"}:
         base = max(base, 0.82)
     elif severity == "random_disclosure":
         base = max(base, 0.58)
@@ -159,7 +159,7 @@ class DynamicPatientControllerV3(DynamicPatientControllerV2):
             state["disclosure_readiness"] = readiness
         readiness = float(readiness)
 
-        if severity in {"reference_informative", "fully_cooperative"}:
+        if severity in {"reference_informative", "fully_cooperative", "zero_avoidance"}:
             response_type = "informative_response"
             distribution = {"informative_response": 1.0}
             base_distribution = dict(distribution)
@@ -192,7 +192,7 @@ class DynamicPatientControllerV3(DynamicPatientControllerV2):
                 "response_type_v3",
             )
 
-        if severity in {"fully_cooperative", "random_disclosure"} and response_type == "informative_response":
+        if severity in {"fully_cooperative", "zero_avoidance", "random_disclosure"} and response_type == "informative_response":
             budget = self._fully_cooperative_budget(total_units)
         else:
             budget = budget_from_response_type(

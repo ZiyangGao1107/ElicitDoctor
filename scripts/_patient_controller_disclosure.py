@@ -119,7 +119,7 @@ def trait_for_profile(profile_id: str) -> str:
 
 
 def shift_trait_for_severity(trait: str, severity: str) -> str:
-    if severity == "fully_cooperative":
+    if severity in {"fully_cooperative", "zero_avoidance"}:
         return "open"
     if severity == "mild_low_info":
         return {"avoidant": "guarded"}.get(trait, trait)
@@ -333,7 +333,7 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
         )
         prior_refusal = bool((state.get("prior_boundary_refusal_by_slot") or {}).get(target_slot))
 
-        if severity in {"reference_informative", "fully_cooperative"}:
+        if severity in {"reference_informative", "fully_cooperative", "zero_avoidance"}:
             response_type = "informative_response"
             distribution = {"informative_response": 1.0}
         else:
@@ -358,7 +358,7 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
                 "response_type",
             )
 
-        if severity in {"fully_cooperative", "random_disclosure"} and response_type == "informative_response":
+        if severity in {"fully_cooperative", "zero_avoidance", "random_disclosure"} and response_type == "informative_response":
             budget = self._fully_cooperative_budget(total_units)
         else:
             budget = budget_from_response_type(
@@ -500,6 +500,8 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
         dynamic_stage = "initial_low_info"
         if severity == "reference_informative":
             dynamic_stage = "reference"
+        elif severity == "zero_avoidance":
+            dynamic_stage = "zero_avoidance_cooperative"
         elif is_targeted_followup:
             dynamic_stage = "targeted_followup_recovery"
         elif is_generic_clarification:
