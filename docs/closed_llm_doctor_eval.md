@@ -58,6 +58,9 @@ run, while still rejecting unsafe source responses. Set
 `PATIENT_REALIZER_FALLBACK_TO_RULE=0` to require every patient response to come
 from accepted LLM realization or repair only.
 
+This fallback is dataset-agnostic. It is active for the default MDD-5K test
+runner and for DAIC/Extended-DAIC runs that set `DATASET_PREFIX=daic`.
+
 ## API Configuration
 
 Closed-source API keys must be supplied outside Git, either through an `.env`
