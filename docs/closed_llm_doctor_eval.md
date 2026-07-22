@@ -44,6 +44,20 @@ The final records should still show `patient_realizer_mode ==
 "verified_llm_cache"` because replay consumes the verified response after it has
 been generated and cached for the current run.
 
+The online runner also enables a final deterministic rule fallback by default
+for patient-realizer requests that still fail after two LLM repair rounds:
+
+```bash
+export PATIENT_REALIZER_FALLBACK_TO_RULE=1
+```
+
+Before a rule fallback response is added to the cache, it is checked with the
+same verifier in `--use-source-rule-based` mode. This prevents
+`reference_under_informative` repair failures from stopping the whole online
+run, while still rejecting unsafe source responses. Set
+`PATIENT_REALIZER_FALLBACK_TO_RULE=0` to require every patient response to come
+from accepted LLM realization or repair only.
+
 ## API Configuration
 
 Closed-source API keys must be supplied outside Git, either through an `.env`

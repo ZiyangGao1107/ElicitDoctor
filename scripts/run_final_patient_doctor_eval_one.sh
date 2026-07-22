@@ -30,6 +30,7 @@ REALIZER_BATCH_SIZE="${REALIZER_BATCH_SIZE:-4}"
 CLOSED_MODEL="${CLOSED_MODEL:-gpt-4.1-mini}"
 CLOSED_PROVIDER="${CLOSED_PROVIDER:-openai_compatible}"
 CLOSED_ENV_FILE="${CLOSED_ENV_FILE:-}"
+PATIENT_REALIZER_FALLBACK_TO_RULE="${PATIENT_REALIZER_FALLBACK_TO_RULE:-1}"
 
 export ACTIVE_REASONING_PROJECT="$PROJECT"
 export HF_HOME="$PROJECT/cache/hf_home"
@@ -170,6 +171,7 @@ echo "=== PCV3.2 online final-patient doctor eval start $(date) model=$MODEL_KEY
 echo "max_turns=$MAX_TURNS max_groups=$MAX_GROUPS max_profiles=$MAX_PROFILES max_per_slot=$MAX_PER_SLOT eval_splits=$EVAL_SPLITS group_dir=$GROUP_DIR" | tee -a "$MAIN_LOG"
 echo "dataset_prefix=$DATASET_PREFIX language=$LANGUAGE profile_path=$PROFILE_PATH schema_path=$SCHEMA_PATH canonical_dir=$CANONICAL_DIR canonical_prefix=$CANONICAL_PREFIX" | tee -a "$MAIN_LOG"
 echo "severities=$SEVERITIES random_low_disclosure_prob=$RANDOM_LOW_DISCLOSURE_PROB random_disclosure_seed=$RANDOM_DISCLOSURE_SEED" | tee -a "$MAIN_LOG"
+echo "patient_realizer_fallback_to_rule=$PATIENT_REALIZER_FALLBACK_TO_RULE" | tee -a "$MAIN_LOG"
 
 run_replay() {
   local out_dir="$1"
@@ -401,16 +403,37 @@ with open(out, "w", encoding="utf-8", newline="\n") as w:
 PY
     repair_args=(--repair-request-path "$merged_repair_req" --repair-verification-records "$merged_repair_verify")
   fi
+  local fallback_args=()
+  local cache_suffix="include_warned"
+  case "$PATIENT_REALIZER_FALLBACK_TO_RULE" in
+    1|true|TRUE|yes|YES)
+      mkdir -p "$build_dir"
+      local rule_verify_dir="$build_dir/rule_fallback_verify"
+      "$PY" scripts/verify_patient_realizer_outputs.py \
+        --request-path "$missing_req" \
+        --report-dir "$rule_verify_dir" \
+        --dataset-prefix "$DATASET_PREFIX" \
+        --use-source-rule-based \
+        --leak-threshold 0.72 \
+        --allowed-threshold 0.45 \
+        --reference-min-coverage 0.30 \
+        --severe-max-coverage 0.45
+      local rule_verify="$rule_verify_dir/${DATASET_PREFIX}_patient_realizer_verification_records_source_rule_based.jsonl"
+      fallback_args=(--fallback-to-rule --rule-verification-records "$rule_verify")
+      cache_suffix="include_warned_with_rule_fallback"
+      ;;
+  esac
 
   "$PY" scripts/build_verified_patient_realizer_cache.py \
     --primary-request-path "$missing_req" \
     --primary-verification-records "$primary_verify" \
     "${repair_args[@]}" \
+    "${fallback_args[@]}" \
     --output-dir "$build_dir" \
     --dataset-prefix "$DATASET_PREFIX" \
     --include-warned
 
-  local new_cache="$build_dir/${DATASET_PREFIX}_verified_patient_response_cache_repair_include_warned.jsonl"
+  local new_cache="$build_dir/${DATASET_PREFIX}_verified_patient_response_cache_repair_${cache_suffix}.jsonl"
   local new_cache_n
   new_cache_n=$(pending_count "$new_cache")
   if [[ "$new_cache_n" -lt "$missing_n" ]]; then

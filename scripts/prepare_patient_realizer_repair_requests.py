@@ -97,6 +97,10 @@ def collect_verifier_forbidden_terms(verification: dict[str, Any]) -> list[str]:
 def repair_instructions_for_errors(hard_errors: list[str]) -> list[str]:
     instructions = []
     error_set = set(hard_errors)
+    if "reference_under_informative" in error_set:
+        instructions.append(
+            "Verifier found the response under-informative. Increase allowed-evidence coverage: include the concrete content from visibility_contract.can_say_exact and the key content from visibility_contract.can_paraphrase_weakly. Do not make this repair shorter or more vague."
+        )
     if error_set & {
         "removed_evidence_leakage",
         "withheld_evidence_leakage",
@@ -150,6 +154,7 @@ def tighten_payload(payload: dict[str, Any], verification: dict[str, Any]) -> di
     verifier_forbidden_terms = collect_verifier_forbidden_terms(verification)
     repair_instructions = repair_instructions_for_errors(hard_errors)
     ultra_safe_boundary = requires_ultra_safe_boundary(hard_errors)
+    under_informative = "reference_under_informative" in set(hard_errors)
 
     repair = {
         "repair_attempt": 1,
@@ -195,6 +200,13 @@ def tighten_payload(payload: dict[str, Any], verification: dict[str, Any]) -> di
         constraints.append(
             "The repaired zero_avoidance patient_response must be cooperative and truthful: do not refuse, deflect, or intentionally omit allowed evidence, and do not add facts beyond the visibility_contract."
         )
+    if under_informative and not ultra_safe_boundary:
+        constraints.append(
+            "This repair is for insufficient information coverage. Preserve safety constraints, but expand the answer using only allowed evidence instead of reducing specificity."
+        )
+        constraints.append(
+            "If visibility_contract.can_say_exact is non-empty, mention every can_say_exact item in natural wording. If can_paraphrase_weakly is non-empty, include its key meaning without adding unsupported details."
+        )
     payload["hard_constraints"] = constraints
 
     budget = dict(payload.get("response_budget") or {})
@@ -228,6 +240,24 @@ def tighten_payload(payload: dict[str, Any], verification: dict[str, Any]) -> di
         payload["style_requirement"] = (
             "Repair unsafe response: give a natural but very short boundary/vague reply. "
             "Do not name symptoms, duration, frequency, risk, diagnosis, event, or behavior."
+        )
+    elif under_informative:
+        visibility_contract = dict(payload.get("visibility_contract") or {})
+        allowed_exact = list(visibility_contract.get("can_say_exact") or [])
+        allowed_weak = list(visibility_contract.get("can_paraphrase_weakly") or [])
+        allowed_count = len(allowed_exact) + len(allowed_weak)
+        budget["max_sentences"] = max(int(budget.get("max_sentences") or 2), min(4, max(2, allowed_count)))
+        budget["max_chinese_chars"] = max(int(budget.get("max_chinese_chars") or 60), 120)
+        budget["clinical_fact_budget"] = max(int(budget.get("clinical_fact_budget") or 1), max(2, allowed_count))
+        budget["required_style"] = (
+            "informative grounded repair; cover allowed evidence clearly without adding unsupported facts"
+        )
+        progressive_state = dict(payload.get("progressive_disclosure_state") or {})
+        progressive_state["repair_override"] = "Verifier rejected the previous response as under-informative; increase allowed evidence coverage."
+        payload["progressive_disclosure_state"] = progressive_state
+        payload["style_requirement"] = (
+            "Repair under-informative response: give a cooperative, concrete answer that covers the allowed evidence in the visibility_contract. "
+            "Do not invent facts outside the allowed evidence."
         )
     else:
         budget["max_sentences"] = min(int(budget.get("max_sentences") or 2), 2)
