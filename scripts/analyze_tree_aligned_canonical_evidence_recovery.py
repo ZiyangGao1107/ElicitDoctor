@@ -30,7 +30,11 @@ def write_json(path: Path, obj: Any) -> None:
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def load_canonical_units(path: Path) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+def load_canonical_units(
+    path: Path,
+    *,
+    strict_supported_match_types: set[str],
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     all_supported: dict[str, set[str]] = defaultdict(set)
     keyword_supported: dict[str, set[str]] = defaultdict(set)
     for unit in iter_jsonl(path):
@@ -40,12 +44,16 @@ def load_canonical_units(path: Path) -> tuple[dict[str, set[str]], dict[str, set
         canonical_unit_id = str(unit["canonical_unit_id"])
         all_supported[profile_id].add(canonical_unit_id)
         match_types = unit.get("match_types") or {}
-        if int(match_types.get("keyword") or 0) > 0:
+        if any(int(match_types.get(match_type) or 0) > 0 for match_type in strict_supported_match_types):
             keyword_supported[profile_id].add(canonical_unit_id)
     return all_supported, keyword_supported
 
 
-def load_surface_links(path: Path) -> tuple[dict[tuple[str, str], set[str]], dict[tuple[str, str], set[str]]]:
+def load_surface_links(
+    path: Path,
+    *,
+    strict_supported_match_types: set[str],
+) -> tuple[dict[tuple[str, str], set[str]], dict[tuple[str, str], set[str]]]:
     all_links: dict[tuple[str, str], set[str]] = defaultdict(set)
     keyword_links: dict[tuple[str, str], set[str]] = defaultdict(set)
     for link in iter_jsonl(path):
@@ -54,7 +62,7 @@ def load_surface_links(path: Path) -> tuple[dict[tuple[str, str], set[str]], dic
         canonical_unit_id = str(link["canonical_unit_id"])
         key = (profile_id, surface_unit_id)
         all_links[key].add(canonical_unit_id)
-        if link.get("match_type") == "keyword":
+        if link.get("match_type") in strict_supported_match_types:
             keyword_links[key].add(canonical_unit_id)
     return all_links, keyword_links
 
@@ -181,14 +189,31 @@ def parse_record_arg(value: str) -> tuple[str, Path]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Analyze recovery of tree-aligned canonical evidence units.")
     parser.add_argument("--canonical-dir", type=Path, default=DEFAULT_CANONICAL_DIR)
+    parser.add_argument("--canonical-prefix", default="mdd5k")
+    parser.add_argument(
+        "--strict-supported-match-types",
+        nargs="+",
+        default=["keyword", "phq8_label_anchor"],
+        help=(
+            "Match types included in the strict denominator/link variant. "
+            "The default preserves MDD keyword support and also supports DAIC PHQ-8 label anchors."
+        ),
+    )
     parser.add_argument("--records", action="append", type=parse_record_arg, required=True)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     args = parser.parse_args()
 
-    canonical_units_path = args.canonical_dir / "mdd5k_tree_aligned_canonical_evidence_units.jsonl"
-    surface_links_path = args.canonical_dir / "mdd5k_surface_to_canonical_evidence_links.jsonl"
-    all_denominator, keyword_denominator = load_canonical_units(canonical_units_path)
-    all_links, keyword_links = load_surface_links(surface_links_path)
+    strict_supported_match_types = set(args.strict_supported_match_types)
+    canonical_units_path = args.canonical_dir / f"{args.canonical_prefix}_tree_aligned_canonical_evidence_units.jsonl"
+    surface_links_path = args.canonical_dir / f"{args.canonical_prefix}_surface_to_canonical_evidence_links.jsonl"
+    all_denominator, keyword_denominator = load_canonical_units(
+        canonical_units_path,
+        strict_supported_match_types=strict_supported_match_types,
+    )
+    all_links, keyword_links = load_surface_links(
+        surface_links_path,
+        strict_supported_match_types=strict_supported_match_types,
+    )
 
     rows: list[dict[str, Any]] = []
     for label, path in args.records:
@@ -213,9 +238,12 @@ def main() -> None:
 
     result = {
         "reference_definition": "tree-aligned canonical evidence units with observed support spans",
+        "canonical_prefix": args.canonical_prefix,
+        "canonical_dir": str(args.canonical_dir),
+        "strict_supported_match_types": sorted(strict_supported_match_types),
         "metric_variants": {
             "all_supported": "includes keyword-aligned and fallback-aligned canonical units",
-            "keyword_supported_only": "stricter; includes only canonical units with dimension keyword evidence",
+            "keyword_supported_only": "stricter; includes canonical units with configured strict support match types, including PHQ-8 label anchors for DAIC",
         },
         "results": summarize(rows),
     }

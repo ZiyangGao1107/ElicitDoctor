@@ -80,6 +80,25 @@ def residual_future_target(
 
 
 def row_text(record: dict[str, Any]) -> str:
+    if str(record.get("value_model_task") or "").startswith("belief_guided_t3"):
+        metadata = record.get("metadata") or {}
+        visible_input = str(record.get("value_model_input") or "").strip()
+        if len(visible_input) > 4000:
+            visible_input = "[truncated to recent visible context]\n" + visible_input[-4000:]
+        return (
+            "Task: estimate long-horizon belief value after the current doctor question.\n"
+            "The model input is limited to visible dialogue state and the candidate query.\n"
+            "The target is future diagnostic belief entropy reduction until T3 truncation.\n"
+            "Canonical evidence recovery, gold diagnosis, and hidden patient evidence are not model inputs.\n"
+            f"Base severity: {record.get('base_severity') or ''}\n"
+            f"Turn index: {record.get('turn_index')}\n"
+            f"Candidate action: {record.get('candidate_action') or ''}\n"
+            f"Immediate uncertainty reduction: {safe_float(record.get('immediate_target_gain')):.6f}\n"
+            f"T3 truncation reason: {metadata.get('t3_truncation_reason') or ''}\n"
+            f"T3 future steps used: {metadata.get('t3_future_steps_used')}\n"
+            f"Low-information response: {bool(metadata.get('low_information_response'))}\n\n"
+            f"{visible_input}"
+        ).strip()
     first = record.get("first_response") or {}
     metadata = record.get("metadata") or {}
     return (

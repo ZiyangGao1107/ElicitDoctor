@@ -1,171 +1,182 @@
-# Value Model V2: Same-State Action Value
+# Belief-Guided Value Model V2
 
-## Purpose
+## Boundary
 
-Value Model V2 estimates which doctor question is likely to recover more
-canonical clinical evidence over the remaining dialogue budget under the frozen
-Final Patient Setting.
+Evidence recovery is the final evaluation metric, not the direct query reward
+for the main RL method.
 
-The model target is not generic dialogue quality. It is:
+The doctor policy only sees the visible dialogue state. The reward/value data
+builder must not expose hidden patient profile fields, canonical evidence
+labels, gold diagnosis labels, or simulator-only metadata as model-visible
+signals.
+
+RFV / RFV-v2 can still be kept as an outcome-supervision or oracle-style
+baseline because it directly optimizes canonical evidence recovery. It should
+not be presented as the same method as the belief-guided value model.
+
+## Core Target
+
+The maintained method separates immediate diagnostic uncertainty reduction from
+long-horizon trajectory value:
 
 ```text
-Q(s_t, a_t) = immediate canonical evidence gain
-            + future branch canonical evidence gain
+short_term_query_reward(s_t, a_t, r_t)
+  = H_norm(b_before) - H_norm(b_after)
+
+long_horizon_belief_value(s_t, a_t)
+  = sum_{k=t+1}^{tau} gamma^{k-t-1}
+      [H_norm(b_before,k) - H_norm(b_after,k)]
 ```
 
-where `s_t` is the visible dialogue state and `a_t` is a candidate doctor
-question.
+Here `s_t` is the visible dialogue state, `a_t` is the doctor question, and
+`r_t` is the patient response under the frozen Final Patient Setting. `b` is a
+probability distribution over a fixed diagnostic space induced only by visible
+dialogue. `tau` is the T3 truncation point: normal dialogue end, patient active
+termination, or a detected belief-plateau tail.
 
-## Why This Replaces the Older Value Target
+The current implementation builds before/after belief evaluator requests from
+verified online replay records:
 
-The older residual-value builder can learn from complete trajectories, but each
-state usually has only the action that was actually taken. That makes credit
-assignment weak: the value model may learn trajectory or policy bias instead of
-learning which question is better at the same state.
+- `query_before`: visible dialogue before the doctor question.
+- `query_after`: the same question plus the patient answer.
 
-V2 uses same-state counterfactual candidates:
+The belief evaluator estimates broad diagnostic hypotheses, top confidence,
+unresolved regions, recommended next inquiry regions, query targets, query
+relevance, redundancy, safety relevance, and belief update magnitude.
+
+Query targeting, relevance, safety, and redundancy are diagnostic fields. They
+can be used for analysis or auxiliary ablation, but they are not the main
+short-term reward.
+
+## Refusal / Low-Information Gate
+
+Patient refusal or vague low-information answers must not create positive
+belief gain. The scorer therefore gates visible responses such as "not willing
+to say" or "cannot say clearly":
+
+```text
+if patient answer is low-information:
+  positive entropy reduction := 0
+  positive confidence gain := 0
+  positive uncertainty-region reduction := 0
+  belief_update_magnitude := 0
+```
+
+The query cannot receive positive short-term reward as if the patient disclosed
+new diagnostic information.
+
+## T3 Truncation
+
+T3 is not GRPO and not a retry policy. It is a trajectory-label cleanup rule:
+when a future tail is trapped in no-information turns, truncate the tail so it
+does not corrupt earlier action credit.
+
+The current detector marks a belief plateau when a window of turns has:
+
+```text
+abs(H_before - H_after) <= epsilon_H
+JS(b_after,t, b_after,t-1) <= epsilon_JS
+low-information response rate >= threshold
+```
+
+For a candidate at turn `t`, the value target only sums future uncertainty
+reduction until the first T3 event after `t`:
+
+```text
+V_long(s_t, a_t)
+  = discounted future entropy reduction before plateau / termination
+```
+
+## Current Builder
+
+The implementation is:
+
+```text
+scripts/build_belief_guided_query_reward_data.py
+```
+
+Prepare belief evaluator requests:
+
+```bash
+python scripts/build_belief_guided_query_reward_data.py prepare \
+  --records outputs_final_patient_ckpt_select_dev_turn24_20260712_rfvfirst_rfv2_ckpt800/mdd5k_llm_doctor_online_replay_records.jsonl \
+  --output-dir outputs_belief_guided_query_reward_data \
+  --max-turn-index 20
+```
+
+Run a local or closed-source belief evaluator over
+`belief_guided_query_belief_requests.jsonl`. The evaluator must return strict
+JSON in `raw_output`.
+
+Score query reward and long-horizon value labels:
+
+```bash
+python scripts/build_belief_guided_query_reward_data.py score \
+  --records outputs_final_patient_ckpt_select_dev_turn24_20260712_rfvfirst_rfv2_ckpt800/mdd5k_llm_doctor_online_replay_records.jsonl \
+  --belief-outputs outputs_belief_guided_query_reward_data/qwen3_belief_outputs.jsonl \
+  --output-dir outputs_belief_guided_query_reward_data \
+  --max-turn-index 20
+```
+
+Important outputs:
+
+- `belief_guided_query_belief_requests.jsonl`
+- `belief_guided_query_reward_records.jsonl`
+- `belief_guided_t3_value_model_records.jsonl`
+- `belief_guided_query_reward_summary.json`
+
+The summary explicitly records:
+
+- parse failures
+- severity distribution
+- low-information response rate
+- short-term reward distribution
+- long-horizon belief value distribution
+- T3 truncation reasons
+- method boundary: no canonical evidence recovery, gold diagnosis, or hidden
+  patient evidence is used as query reward
+
+## Training Use
+
+After the builder is validated on dev data, train the value model on same-state
+candidate branches rather than single-policy trajectories:
 
 ```text
 state s_t
-  candidate a_1 -> patient response / branch rollout -> recovery R_1
-  candidate a_2 -> patient response / branch rollout -> recovery R_2
-  candidate a_3 -> patient response / branch rollout -> recovery R_3
-  candidate a_4 -> patient response / branch rollout -> recovery R_4
+  candidate a_1 -> final patient response / branch -> belief value y_1
+  candidate a_2 -> final patient response / branch -> belief value y_2
+  candidate a_3 -> final patient response / branch -> belief value y_3
+  candidate a_4 -> final patient response / branch -> belief value y_4
 ```
 
-The value model is then trained to score higher-recovery candidates above
-lower-recovery candidates.
+The value model should be selected by held-out same-state ranking metrics:
 
-## Data Pipeline
+- Spearman correlation with long-horizon belief value
+- pairwise accuracy
+- top-1 candidate accuracy
+- oracle regret
+- subgroup checks for severe scenarios
 
-Build a state bank from verified final-patient online records:
-
-```bash
-python scripts/build_final_patient_state_bank_from_online_records.py \
-  --source rfv2=outputs_pcv32_online_final_patient_baseline_turn24_..._qwen_grpo_rfv2_ckpt1600 \
-  --output-dir outputs_final_patient_state_bank_rfv2 \
-  --metric-name keyword_supported_only \
-  --max-turn-index 20 \
-  --candidates-per-state 4
-```
-
-Generate doctor candidates for
-`final_patient_same_state_candidate_requests.jsonl` with a doctor model, then
-run them through the final patient controller/realizer/cache path:
-
-```bash
-python scripts/build_final_patient_candidate_rollout.py \
-  --state-bank outputs_final_patient_state_bank_rfv2/final_patient_state_bank.jsonl \
-  --candidate-requests outputs_final_patient_state_bank_rfv2/final_patient_same_state_candidate_requests.jsonl \
-  --candidate-outputs outputs_candidate_doctor_outputs.jsonl \
-  --output-dir outputs_final_patient_candidate_rollout_rfv2
-
-python scripts/apply_verified_patient_cache_to_candidate_rollout.py \
-  --records outputs_final_patient_candidate_rollout_rfv2/final_patient_candidate_rule_rollout_records.jsonl \
-  --cache outputs_verified_candidate_patient_cache/current_verified_patient_cache.jsonl \
-  --output-dir outputs_final_patient_verified_candidate_rollout_rfv2 \
-  --require-all \
-  --drop-hard-errors
-```
-
-Build action-value records:
-
-```bash
-python scripts/build_final_patient_action_value_data.py \
-  --records outputs_final_patient_verified_candidate_rollout_rfv2/final_patient_candidate_verified_rollout_records.jsonl \
-  --output-dir outputs_final_patient_action_value_data_rfv2 \
-  --metric-name keyword_supported_only
-```
-
-If candidate branches contain only the first patient response, the target is a
-one-step action value. If candidate branches are continued for more turns, the
-same builder automatically includes future branch gains.
-
-The same steps can be run with the wrapper:
-
-```bash
-bash scripts/run_final_patient_value_model_v2.sh \
-  outputs_final_patient_verified_candidate_rollout_rfv2/final_patient_candidate_verified_rollout_records.jsonl \
-  rfv2_value_v2
-```
-
-## Training
-
-Train the lightweight value model with action-value targets and same-state
-ranking:
-
-```bash
-python scripts/train_final_patient_rfv_value_model.py \
-  --record-path outputs_final_patient_action_value_data_rfv2/final_patient_action_value_records.jsonl \
-  --output-dir outputs_final_patient_action_value_model_v2 \
-  --target-mode action_value_total \
-  --pairwise-weight 0.5 \
-  --pair-min-margin 0.01 \
-  --epochs 12
-```
-
-Score action-value records with the trained model:
-
-```bash
-python scripts/score_final_patient_value_model.py \
-  --record-path outputs_final_patient_action_value_data_rfv2/final_patient_action_value_records.jsonl \
-  --model-dir outputs_final_patient_action_value_model_v2 \
-  --output-dir outputs_final_patient_action_value_scores_v2 \
-  --target-mode action_value_total
-```
-
-Important metrics in
-`final_patient_rfv_value_model_train_summary.json`:
-
-- `eval_metrics.spearman`: rank correlation with realized action value.
-- `eval_pair_metrics.pair_accuracy`: same-state pairwise ordering accuracy.
-- `eval_pair_metrics.top1_accuracy`: whether the top predicted candidate is
-  the best realized candidate for that state.
-- `eval_pair_metrics.mean_oracle_regret`: realized recovery lost by choosing
-  the predicted best instead of the oracle best.
-
-## Use in GRPO / RFV
-
-After the V2 value model passes offline ranking checks, use it as a reward
-component for same-state GRPO groups:
+Then use the selected value model in policy training:
 
 ```text
-reward = canonical evidence gain
-       + lambda_value * predicted residual/action value
-       - safety/avoidance penalties
+reward = short_term_query_reward
+       + lambda_value * predicted_long_horizon_belief_value
 ```
 
-Build value-augmented GRPO groups:
-
-```bash
-python scripts/build_final_patient_grpo_groups.py \
-  --records outputs_final_patient_verified_candidate_rollout_rfv2/final_patient_candidate_verified_rollout_records.jsonl \
-  --output-dir outputs_final_patient_valueaug_grpo_groups_v2 \
-  --reward-source immediate_delta \
-  --value-predictions outputs_final_patient_action_value_scores_v2/final_patient_value_model_predictions.jsonl \
-  --base-reward-weight 1.0 \
-  --value-weight 0.5 \
-  --require-value-predictions
-```
-
-Do not use hidden patient evidence as model-visible doctor input. Hidden
-canonical labels may be used for reward and value targets during training, but
-the deployed doctor policy should only see the dialogue history.
+Final policy checkpoints are still selected by verified Final Patient online
+recovery on dev, and final numbers are reported on test.
 
 ## Minimum Acceptance Bar
 
-Before launching a full GRPO/RFV run, require:
+Before launching a full GRPO / ValueAug run with this target, require:
 
 - verified final-patient records only
-- no fallback rows
-- no hard-error rows
-- at least two candidates per state
-- non-zero reward margin for most groups
-- positive held-out Spearman
-- positive pairwise accuracy above random
-- severe subgroup not worse than the non-value baseline
-
-After training, select the value model checkpoint with
-`scripts/select_final_patient_checkpoint.py --stage value_model`. The selector
-uses held-out same-state ranking metrics rather than generic regression loss;
-see `docs/checkpoint_selection.md`.
+- `fallback = 0`
+- `hard_errors = 0`
+- no canonical evidence or gold diagnosis in reward prompts
+- belief evaluator JSON parse failures near zero
+- refusal / low-information gate active
+- reward distribution not collapsed to all zeros
+- severe subgroup inspected separately
+- positive held-out same-state ranking metrics for the value model

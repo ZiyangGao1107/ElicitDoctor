@@ -82,6 +82,14 @@ Severity controls how quickly the patient opens up:
 - moderate: partial answers and some avoidance.
 - severe: more guarded, especially for sensitive evidence, but can open after
   relevant and supportive follow-up.
+- random_disclosure: each turn has a configurable probability of using the
+  low-disclosure policy; otherwise the patient answers cooperatively within the
+  allowed evidence budget.
+- fully_cooperative: answers as clearly as possible within the allowed evidence
+  budget and does not actively terminate.
+- zero_avoidance: cooperative-patient condition; answers truthfully from the
+  available profile/evidence content, does not avoid or intentionally
+  under-disclose, and does not invent content outside the allowed evidence.
 
 ## Patient Realizer
 
@@ -225,6 +233,7 @@ Main files:
 - `scripts/build_final_patient_candidate_rollout.py`
 - `scripts/apply_verified_patient_cache_to_candidate_rollout.py`
 - `scripts/build_final_patient_grpo_groups.py`
+- `scripts/build_belief_guided_query_reward_data.py`
 - `scripts/build_final_patient_action_value_data.py`
 - `scripts/build_final_patient_rfv_data.py`
 - `scripts/train_final_patient_rfv_value_model.py`
@@ -245,16 +254,16 @@ verified online records
   -> same-state candidate rollouts
   -> verified patient cache applied to candidate branches
   -> GRPO groups
-  -> same-state action-value targets
+  -> belief-guided query reward / long-horizon value labels
 ```
 
-Value Model V2 should be trained on same-state candidate branches. Its main
-target is action value: immediate canonical evidence gain plus future branch
-canonical evidence gain. The trainer supports this through
-`--target-mode action_value_total` and optional pairwise ranking with
-`--pairwise-weight`. The trained value model can then score candidate branches
-and `build_final_patient_grpo_groups.py` can combine base reward with
-`--value-predictions` and `--value-weight`. See `docs/value_model_v2.md`.
+Value Model V2 should be trained on same-state candidate branches, but the
+maintained target is no longer canonical evidence gain. The current route uses
+visible-dialogue belief change, query targeting, refusal/low-information
+gating, and future patient openness to build reward/value labels. Canonical
+evidence recovery remains the final evaluation metric and an RFV-style oracle
+baseline, not the direct query reward for the main method. See
+`docs/value_model_v2.md`.
 
 ## Training Runners
 

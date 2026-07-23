@@ -69,6 +69,18 @@ TARGET_TOPIC_KEYWORDS = {
 }
 
 
+REFUSAL_OR_VAGUE_CUES = REFUSAL_OR_VAGUE_CUES + (
+    "not sure how to explain",
+    "do not know how to answer",
+    "don't know how to answer",
+    "do not really want to go into detail",
+    "don't really want to go into detail",
+    "come back to that later",
+    "hard to talk about",
+    "not ready to talk about",
+)
+
+
 def write_json(path: Path, obj: Any) -> None:
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -170,7 +182,8 @@ def unit_scores(response: str, units: list[dict[str, Any]]) -> list[dict[str, An
 
 
 def has_refusal_or_vague_cue(response: str) -> bool:
-    return any(cue in response for cue in REFUSAL_OR_VAGUE_CUES)
+    response_lower = response.lower()
+    return any(cue.lower() in response_lower for cue in REFUSAL_OR_VAGUE_CUES)
 
 
 def topic_specific_terms(response: str, target_tree_node: str | None) -> list[str]:
@@ -291,8 +304,13 @@ def verify_one(
     low_info_category = str(request.get("low_info_category") or "")
     vague_or_refusal = has_refusal_or_vague_cue(response)
 
-    if severity == "reference_informative" and visible_units and mean_allowed_coverage < reference_min_coverage:
+    if severity in {"reference_informative", "zero_avoidance"} and visible_units and mean_allowed_coverage < reference_min_coverage:
         hard_errors.append("reference_under_informative")
+    if severity == "zero_avoidance" and visible_units and vague_or_refusal:
+        if mean_allowed_coverage < reference_min_coverage:
+            hard_errors.append("zero_avoidance_refusal_or_deflection")
+        else:
+            warnings.append("zero_avoidance_vague_cue_but_informative")
     if severity == "severe_low_info":
         if not visible_units and not vague_or_refusal:
             hard_errors.append("severe_missing_boundary_or_vagueness")
@@ -484,6 +502,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--allowed-threshold", type=float, default=0.45)
     parser.add_argument("--reference-min-coverage", type=float, default=0.30)
     parser.add_argument("--severe-max-coverage", type=float, default=0.45)
+    parser.add_argument("--dataset-prefix", default="mdd5k")
     return parser.parse_args()
 
 
@@ -517,8 +536,9 @@ def main() -> None:
         request_path=args.request_path,
         output_path=None if args.use_source_rule_based else args.output_path,
     )
-    record_path = args.report_dir / f"mdd5k_patient_realizer_verification_records_{source_mode}.jsonl"
-    summary_path = args.report_dir / f"mdd5k_patient_realizer_verification_summary_{source_mode}.json"
+    summary["dataset_prefix"] = args.dataset_prefix
+    record_path = args.report_dir / f"{args.dataset_prefix}_patient_realizer_verification_records_{source_mode}.jsonl"
+    summary_path = args.report_dir / f"{args.dataset_prefix}_patient_realizer_verification_summary_{source_mode}.json"
     report_path = args.report_dir / f"LLM_PATIENT_REALIZER_VERIFICATION_REPORT_{source_mode}.md"
     write_jsonl(record_path, records)
     write_json(summary_path, summary)

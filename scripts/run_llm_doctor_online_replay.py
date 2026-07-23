@@ -196,13 +196,37 @@ def next_global_slot(turn_index: int) -> str:
     return GLOBAL_CORE_SEQUENCE[min(turn_index, len(GLOBAL_CORE_SEQUENCE) - 1)]
 
 
+EN_SLOT_QUESTIONS = {
+    "anhedonia": "Have you had little interest or pleasure in activities or hobbies recently?",
+    "hopelessness_or_crying": "Have you felt down, depressed, hopeless, sad, or been crying recently?",
+    "sleep": "Have you had trouble falling asleep, staying asleep, or sleeping too much?",
+    "fatigue": "Have you felt tired, exhausted, or had little energy?",
+    "appetite_loss": "Has your appetite, eating, food intake, or weight changed?",
+    "self_worth": "Have you felt bad about yourself, guilty, worthless, or like a failure?",
+    "attention_decline": "Have you had trouble concentrating, focusing, or paying attention?",
+    "psychomotor_change": "Have others noticed you moving slowly, speaking slowly, being fidgety, restless, or unable to sit still?",
+}
+
+
+def scripted_question_en(turn_index: int, keywords_by_slot: dict[str, list[str]]) -> str:
+    slots = list(keywords_by_slot)
+    if not slots:
+        return "What has been bothering you most recently?"
+    slot = slots[turn_index % len(slots)]
+    return EN_SLOT_QUESTIONS.get(slot, f"Could you tell me more about {slot.replace('_', ' ')}?")
+
+
 def scripted_question(
     *,
     policy_name: str,
     turn_index: int,
     history: list[dict[str, str]],
     keywords_by_slot: dict[str, list[str]],
+    language: str,
 ) -> str:
+    if language == "en":
+        return scripted_question_en(turn_index, keywords_by_slot)
+
     if turn_index == 0:
         if policy_name == "closed_llm_evidence_aware":
             return "最近最困扰你的情绪、睡眠或学习工作影响是什么？"
@@ -227,6 +251,7 @@ def build_request_record(
     policy_name: str,
     turn_index: int,
     history: list[dict[str, str]],
+    language: str,
 ) -> dict[str, Any]:
     request_id = f"{profile['profile_id']}::{severity}::{policy_name}::turn_{turn_index}"
     history_snapshot = [dict(turn) for turn in history]
@@ -239,8 +264,8 @@ def build_request_record(
         "base_severity": severity,
         "turn_index": turn_index,
         "dialogue_history": history_snapshot,
-        "messages": build_messages(policy_name, history_snapshot),
-        "expected_output": {"doctor_question": "one natural-language Chinese question"},
+        "messages": build_messages(policy_name, history_snapshot, language=language),
+        "expected_output": {"doctor_question": f"one natural-language {'English' if language == 'en' else 'Chinese'} question"},
         "doctor_visible_fields": ["dialogue_history"],
         "hidden_eval_metadata_not_for_model": [
             "profile_id",
@@ -265,6 +290,7 @@ def choose_doctor_question(
     missing_output_policy: str,
     history: list[dict[str, str]],
     keywords_by_slot: dict[str, list[str]],
+    language: str,
 ) -> tuple[str | None, str]:
     request_id = request["request_id"]
     if provider == "cached":
@@ -280,6 +306,7 @@ def choose_doctor_question(
         turn_index=int(request["turn_index"]),
         history=history,
         keywords_by_slot=keywords_by_slot,
+        language=language,
     )
     source = "scripted_smoke" if provider == "scripted" else "scripted_fallback"
     return clean_doctor_question(question), source
@@ -299,6 +326,7 @@ def run_online_replay(
     patient_realizer_mode: str = "rule",
     patient_realizer_cache: dict[str, dict[str, Any]] | None = None,
     patient_realizer_cache_policy: str = "fallback",
+    language: str = "zh",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     turn_records: list[dict[str, Any]] = []
     request_records: list[dict[str, Any]] = []
@@ -319,6 +347,7 @@ def run_online_replay(
                         policy_name=policy_name,
                         turn_index=turn_index,
                         history=history,
+                        language=language,
                     )
                     request_records.append(request)
                     doctor_question, question_source = choose_doctor_question(
@@ -328,6 +357,7 @@ def run_online_replay(
                         missing_output_policy=missing_output_policy,
                         history=history,
                         keywords_by_slot=keywords_by_slot,
+                        language=language,
                     )
                     if doctor_question is None:
                         pending_requests.append(request)
@@ -470,6 +500,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--profiles", type=Path, default=DEFAULT_PROFILE_PATH)
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA_PATH)
     parser.add_argument("--group-dir", type=Path, default=DEFAULT_GROUP_DIR)
+    parser.add_argument("--dataset-prefix", default="mdd5k")
+    parser.add_argument("--language", choices=["zh", "en"], default="zh")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--splits", nargs="+", default=["dev", "test"])
     parser.add_argument("--max-groups", type=int, default=90)
@@ -477,6 +509,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-profiles", type=int, default=27)
     parser.add_argument("--max-turns", type=int, default=8)
     parser.add_argument("--max-units-per-slot", type=int, default=8)
+    parser.add_argument("--random-low-disclosure-prob", type=float, default=0.5)
+    parser.add_argument("--random-disclosure-seed", type=int, default=0)
     parser.add_argument("--patient-controller-version", choices=["v1", "v2", "v3", "v3_1", "v3_2"], default="v1")
     parser.add_argument("--provider", choices=["scripted", "cached"], default="scripted")
     parser.add_argument("--model-output-path", type=Path, default=None)
@@ -526,6 +560,8 @@ def main() -> None:
         schema=schema,
         profiles=profiles_by_id,
         max_units_per_slot=args.max_units_per_slot,
+        random_low_disclosure_prob=args.random_low_disclosure_prob,
+        random_disclosure_seed=args.random_disclosure_seed,
     )
 
     records, requests, pending = run_online_replay(
@@ -541,6 +577,7 @@ def main() -> None:
         patient_realizer_mode=args.patient_realizer_mode,
         patient_realizer_cache=patient_realizer_cache,
         patient_realizer_cache_policy=args.patient_realizer_cache_policy,
+        language=args.language,
     )
     summary = {
         "settings": {
@@ -550,6 +587,8 @@ def main() -> None:
             "max_profiles": args.max_profiles,
             "max_turns": args.max_turns,
             "max_units_per_slot": args.max_units_per_slot,
+            "random_low_disclosure_prob": args.random_low_disclosure_prob,
+            "random_disclosure_seed": args.random_disclosure_seed,
             "patient_controller_version": args.patient_controller_version,
             "provider": args.provider,
             "model_output_path": str(args.model_output_path) if args.model_output_path else None,
@@ -558,6 +597,8 @@ def main() -> None:
             "patient_realizer_cache_path": str(args.patient_realizer_cache_path) if args.patient_realizer_cache_path else None,
             "patient_realizer_cache_records": len(patient_realizer_cache),
             "patient_realizer_cache_policy": args.patient_realizer_cache_policy,
+            "dataset_prefix": args.dataset_prefix,
+            "language": args.language,
             "severities": severities,
             "policies": args.policies,
         },
@@ -569,10 +610,10 @@ def main() -> None:
         ),
     }
 
-    records_path = args.output_dir / "mdd5k_llm_doctor_online_replay_records.jsonl"
-    requests_path = args.output_dir / "mdd5k_llm_doctor_online_replay_requests.jsonl"
-    pending_path = args.output_dir / "mdd5k_llm_doctor_online_replay_pending_requests.jsonl"
-    summary_path = args.output_dir / "mdd5k_llm_doctor_online_replay_summary.json"
+    records_path = args.output_dir / f"{args.dataset_prefix}_llm_doctor_online_replay_records.jsonl"
+    requests_path = args.output_dir / f"{args.dataset_prefix}_llm_doctor_online_replay_requests.jsonl"
+    pending_path = args.output_dir / f"{args.dataset_prefix}_llm_doctor_online_replay_pending_requests.jsonl"
+    summary_path = args.output_dir / f"{args.dataset_prefix}_llm_doctor_online_replay_summary.json"
     report_path = args.output_dir / "LLM_DOCTOR_ONLINE_REPLAY_V1.md"
 
     write_jsonl(records_path, records)

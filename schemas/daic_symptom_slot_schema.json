@@ -1,0 +1,94 @@
+{
+  "schema_name": "daic_phq8_symptom_slot_schema",
+  "version": "2026-07-23",
+  "source": {
+    "dataset": "DAIC-WoZ + Extended-DAIC",
+    "note": "DAIC is modeled as a PHQ-8 depression-screening environment. The symptom space is exactly the eight PHQ-8 items; suicide/self-harm and broader psychiatric interview context are not evaluator slots for this dataset. Question keywords include English and Chinese surface forms so local Chinese doctor baselines can be mapped to the same PHQ-8 slots."
+  },
+  "task": {
+    "diagnosis_labels": ["Depressed", "control"],
+    "positive_label": "Depressed",
+    "negative_label": "control",
+    "label_rule": "Use PHQ8_Binary when provided; otherwise derive Depressed when PHQ8 total >= 10."
+  },
+  "gate_target_formula": "topic_responsiveness * information_retention * clarity",
+  "tree_space": {
+    "daic_phq8": [
+      "anhedonia",
+      "hopelessness_or_crying",
+      "sleep",
+      "fatigue",
+      "appetite_loss",
+      "self_worth",
+      "attention_decline",
+      "psychomotor_change"
+    ],
+    "unknown": []
+  },
+  "slots": [
+    {
+      "slot": "anhedonia",
+      "phq8_item": 1,
+      "name": "Little interest or pleasure in doing things",
+      "evidence_unit_hints": ["interest_loss", "reduced_pleasure", "motivation", "activities"],
+      "criticality": "high",
+      "question_keywords": ["interest", "pleasure", "enjoy", "motivation", "activities", "hobbies", "fun", "like doing", "乐趣", "愉快", "享受", "喜欢做", "提不起兴趣", "没兴趣", "没有兴趣", "兴趣下降", "兴趣减少", "失去兴趣", "没动力", "动力下降", "不想做"]
+    },
+    {
+      "slot": "hopelessness_or_crying",
+      "phq8_item": 2,
+      "name": "Feeling down, depressed, or hopeless",
+      "evidence_unit_hints": ["depressed_mood", "sadness", "hopelessness", "crying"],
+      "criticality": "high",
+      "question_keywords": ["down", "depressed", "hopeless", "sad", "mood", "low mood", "unhappy", "cry", "crying", "情绪", "心情", "情绪状态", "低落", "沮丧", "抑郁", "绝望", "难过", "悲伤", "哭", "哭泣"]
+    },
+    {
+      "slot": "sleep",
+      "phq8_item": 3,
+      "name": "Trouble falling or staying asleep, or sleeping too much",
+      "evidence_unit_hints": ["insomnia", "sleep_maintenance", "early_waking", "hypersomnia"],
+      "criticality": "medium",
+      "question_keywords": ["sleep", "asleep", "insomnia", "falling asleep", "staying asleep", "wake up", "waking", "oversleep", "sleeping too much", "too much sleep", "睡眠", "睡觉", "入睡", "失眠", "醒来", "早醒", "睡不着", "睡太多", "嗜睡"]
+    },
+    {
+      "slot": "fatigue",
+      "phq8_item": 4,
+      "name": "Feeling tired or having little energy",
+      "evidence_unit_hints": ["fatigue", "low_energy", "exhaustion"],
+      "criticality": "medium",
+      "question_keywords": ["tired", "energy", "fatigue", "exhausted", "worn out", "drained", "little energy", "low energy", "累", "疲惫", "疲劳", "乏力", "没精神", "精力", "没力气", "低能量"]
+    },
+    {
+      "slot": "appetite_loss",
+      "phq8_item": 5,
+      "name": "Poor appetite or overeating",
+      "evidence_unit_hints": ["poor_appetite", "overeating", "weight_or_food_change"],
+      "criticality": "medium",
+      "question_keywords": ["appetite", "eating", "eat", "food", "weight", "hungry", "overeating", "overeat", "poor appetite", "食欲", "胃口", "吃饭", "吃东西", "饮食", "体重", "饥饿", "暴食", "吃太多", "吃不下"]
+    },
+    {
+      "slot": "self_worth",
+      "phq8_item": 6,
+      "name": "Feeling bad about yourself or that you are a failure",
+      "evidence_unit_hints": ["worthlessness", "guilt", "failure", "self_esteem"],
+      "criticality": "high",
+      "question_keywords": ["bad about yourself", "feeling bad", "failure", "guilty", "worth", "worthless", "self esteem", "disappointing", "let people down", "自责", "内疚", "愧疚", "失败", "没价值", "价值感", "自我评价", "自尊", "对自己失望", "拖累"]
+    },
+    {
+      "slot": "attention_decline",
+      "phq8_item": 7,
+      "name": "Trouble concentrating on things",
+      "evidence_unit_hints": ["concentration", "attention", "focus", "distractibility"],
+      "criticality": "medium",
+      "question_keywords": ["concentrate", "concentrating", "concentration", "focus", "focusing", "attention", "reading", "watching tv", "distracted", "注意力", "集中", "专注", "分心", "走神", "阅读", "看电视", "看书"]
+    },
+    {
+      "slot": "psychomotor_change",
+      "phq8_item": 8,
+      "name": "Moving or speaking slowly, or being fidgety/restless",
+      "evidence_unit_hints": ["psychomotor_slowing", "restlessness", "agitation"],
+      "criticality": "medium",
+      "question_keywords": ["moving", "speaking", "moving slowly", "speaking slowly", "slow", "slowed down", "restless", "restlessness", "fidgety", "fidgeting", "agitated", "could not sit still", "动作慢", "说话慢", "行动慢", "反应慢", "迟缓", "坐立不安", "坐不住", "烦躁", "躁动", "手脚不停"]
+    }
+  ]
+}
