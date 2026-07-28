@@ -19,6 +19,14 @@ SEVERE_SAFE_CUE_PHRASES = [
     "可以先跳过",
 ]
 
+EN_SEVERE_SAFE_CUE_PHRASES = [
+    "I am not sure how to explain that",
+    "I do not really want to go into detail",
+    "I do not know how to answer that",
+    "Could we come back to that later",
+    "It is hard to talk about",
+]
+
 
 def clean_text(text: Any) -> str:
     return " ".join(str(text or "").replace("\u3000", " ").split())
@@ -145,8 +153,18 @@ def requires_ultra_safe_boundary(hard_errors: list[str]) -> bool:
     )
 
 
+def infer_payload_language(payload: dict[str, Any]) -> str:
+    task = str(payload.get("task") or "")
+    output_format = payload.get("output_format") or {}
+    response_format = str(output_format.get("patient_response") or "") if isinstance(output_format, dict) else ""
+    if "English" in task or "English" in response_format:
+        return "en"
+    return "zh"
+
+
 def tighten_payload(payload: dict[str, Any], verification: dict[str, Any]) -> dict[str, Any]:
     payload = json.loads(json.dumps(payload, ensure_ascii=False))
+    language = infer_payload_language(payload)
     hard_errors = verification.get("hard_errors") or []
     warnings = verification.get("warnings") or []
     patient_response = clean_text(verification.get("patient_response"))
@@ -192,9 +210,10 @@ def tighten_payload(payload: dict[str, Any], verification: dict[str, Any]) -> di
             "Because verifier found leakage or topic-specific claims, ignore the mild/moderate disclosure style for this repair and use a generic boundary-only answer with zero clinical facts."
         )
     if severity == "severe_low_info":
+        safe_cue_phrases = EN_SEVERE_SAFE_CUE_PHRASES if language == "en" else SEVERE_SAFE_CUE_PHRASES
         constraints.append(
             "The repaired severe_low_info patient_response must include at least one exact boundary/vague cue phrase: "
-            + ", ".join(SEVERE_SAFE_CUE_PHRASES)
+            + ", ".join(safe_cue_phrases)
         )
     if severity == "zero_avoidance":
         constraints.append(
@@ -227,15 +246,26 @@ def tighten_payload(payload: dict[str, Any], verification: dict[str, Any]) -> di
         visibility_contract["can_paraphrase_weakly"] = []
         visibility_contract["allowed_hint_count"] = 0
         visibility_contract["forbidden_surface_terms"] = dedupe_texts(existing_terms + verifier_forbidden_terms)
-        visibility_contract["can_hint_about_topic"] = (
-            "generic words only, such as 这个/这方面/这件事; do not name the exact symptom slot"
-        )
-        visibility_contract["allowed_response_templates"] = [
-            "这个我现在不太想说。",
-            "这方面我还说不清。",
-            "可以先跳过这个吗？",
-            "我现在不知道怎么说。",
-        ]
+        if language == "en":
+            visibility_contract["can_hint_about_topic"] = (
+                "generic words only, such as this/that/this topic; do not name the exact symptom slot"
+            )
+            visibility_contract["allowed_response_templates"] = [
+                "I am not sure how to explain that right now.",
+                "I do not really want to go into detail about that.",
+                "Could we come back to that later?",
+                "I do not know how to answer that right now.",
+            ]
+        else:
+            visibility_contract["can_hint_about_topic"] = (
+                "generic words only, such as 这个/这方面/这件事; do not name the exact symptom slot"
+            )
+            visibility_contract["allowed_response_templates"] = [
+                "这个我现在不太想说。",
+                "这方面我还说不清。",
+                "可以先跳过这个吗？",
+                "我现在不知道怎么说。",
+            ]
         payload["visibility_contract"] = visibility_contract
         payload["style_requirement"] = (
             "Repair unsafe response: give a natural but very short boundary/vague reply. "
@@ -271,6 +301,8 @@ def build_repair_request(original: dict[str, Any], verification: dict[str, Any])
     messages = list(original.get("messages") or [])
     payload = parse_user_payload(messages)
     payload = tighten_payload(payload, verification)
+    language = infer_payload_language(payload)
+    response_language = "English" if language == "en" else "Chinese"
     request = dict(original)
     request["request_id"] = f"{original.get('request_id')}::repair1"
     request["repair_of_request_id"] = original.get("repair_of_request_id") or original.get("request_id")
@@ -278,7 +310,7 @@ def build_repair_request(original: dict[str, Any], verification: dict[str, Any])
     request["prompt_protocol_version"] = f"{original.get('prompt_protocol_version', 'unknown')}+repair_v1"
     request["messages"] = replace_user_payload(messages, payload)
     request["expected_output"] = {
-        "patient_response": "safer repaired natural Chinese response constrained by allowed evidence",
+        "patient_response": f"safer repaired natural {response_language} response constrained by allowed evidence",
         "brief_self_check": "short no-new-fact self check",
     }
     return request

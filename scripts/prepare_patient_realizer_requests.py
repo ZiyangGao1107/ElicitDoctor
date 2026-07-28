@@ -315,6 +315,18 @@ def build_visibility_contract(
             allowed_hint_count = 0
         else:
             allowed_hint_count = min(1, len(weakened_units) + len(retained_units))
+        allowed_response_templates = [
+            "\u8fd9\u4e2a\u6211\u73b0\u5728\u4e0d\u592a\u60f3\u8bf4\u3002",
+            "\u8fd9\u65b9\u9762\u6211\u8fd8\u8bf4\u4e0d\u6e05\u3002",
+            "\u53ef\u4ee5\u5148\u8df3\u8fc7\u8fd9\u4e2a\u5417\uff1f",
+            "\u6211\u73b0\u5728\u4e0d\u77e5\u9053\u600e\u4e48\u8bf4\u3002",
+        ]
+        if stage == "one_weak_hint":
+            allowed_response_templates = [
+                "\u8fd9\u65b9\u9762\u53ef\u80fd\u6709\u4e00\u70b9\u5f71\u54cd\uff0c\u4f46\u7ec6\u8282\u6211\u73b0\u5728\u4e0d\u592a\u60f3\u5c55\u5f00\u3002",
+                "\u5982\u679c\u53ea\u8bf4\u4e00\u70b9\uff0c\u8fd9\u65b9\u9762\u662f\u6709\u70b9\u53d7\u5f71\u54cd\uff0c\u4f46\u6211\u8fd8\u4e0d\u60f3\u8bb2\u592a\u591a\u3002",
+                "\u8fd9\u4ef6\u4e8b\u597d\u50cf\u6709\u4e00\u70b9\u5f71\u54cd\uff0c\u4f46\u66f4\u5177\u4f53\u7684\u6211\u73b0\u5728\u8bf4\u4e0d\u6e05\u3002",
+            ]
         # For severe turns, exact unit text is deliberately hidden from the
         # realizer. The verifier still sees the true retained/weakened units.
         return {
@@ -348,6 +360,7 @@ def build_visibility_contract(
                 "set a soft boundary",
                 "ask to slow down or come back later",
                 "give a very small vague hint only when progressive_disclosure_stage is one_weak_hint",
+                "when progressive_disclosure_stage is one_weak_hint, do not give a pure refusal; include one weak impact hint and then stop",
             ],
             "allowed_response_templates": [
                 "这个我现在不太想说。",
@@ -355,6 +368,7 @@ def build_visibility_contract(
                 "可以先跳过这个吗？",
                 "我现在不知道怎么说。",
             ],
+            "allowed_response_templates": allowed_response_templates,
         }
     return {
         "contract_version": "pcv3_2_json_allowed_only_v2",
@@ -381,6 +395,24 @@ def build_messages(record: dict[str, Any], history: list[dict[str, str]], langua
         retained_units=retained_units,
         weakened_units=weakened_units,
     )
+    if language == "en" and severity == "severe_low_info":
+        visibility_contract["can_hint_about_topic"] = (
+            "the doctor's current concern only in generic words such as this/that/this topic; "
+            "do not name the exact symptom slot"
+        )
+        if visibility_contract.get("progressive_disclosure_stage") == "one_weak_hint":
+            visibility_contract["allowed_response_templates"] = [
+                "It may be affecting me a little, but I do not really want to go into detail right now.",
+                "If I say just a little, it has been somewhat hard, but I do not want to explain much yet.",
+                "There might be some impact, but I am not sure how to describe it right now.",
+            ]
+        else:
+            visibility_contract["allowed_response_templates"] = [
+                "I am not sure how to explain that right now.",
+                "I do not really want to go into detail about that.",
+                "Could we come back to that later?",
+                "I do not know how to answer that right now.",
+            ]
     if language == "en" and "low_information_boundary" in visibility_contract:
         visibility_contract["low_information_boundary"]["allowed_response_templates"] = [
             "I am not sure how to explain that right now.",
