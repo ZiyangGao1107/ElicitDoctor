@@ -82,7 +82,14 @@ def hard_error(row: dict[str, Any]) -> bool:
 
 
 def records_path(output_dir: Path) -> Path:
-    return output_dir / "mdd5k_llm_doctor_online_replay_records.jsonl"
+    candidates = [
+        output_dir / "mdd5k_llm_doctor_online_replay_records.jsonl",
+        output_dir / "daic_llm_doctor_online_replay_records.jsonl",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    return candidates[0]
 
 
 def recovery_path(output_dir: Path) -> Path:
