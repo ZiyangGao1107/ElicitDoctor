@@ -132,6 +132,27 @@ def render_reward_centered_v6_prompt(history: list[dict[str, str]], max_turns: i
     )
 
 
+def render_reward_centered_v6_prompt_en(history: list[dict[str, str]], max_turns: int = 8) -> str:
+    history_text = render_history_en(history[-max_turns:])
+    return (
+        "You are an active mental-health intake doctor agent.\n"
+        "Task: based only on the visible dialogue history, ask the next natural, specific, safe "
+        "interview question. The goal is to recover clinically relevant evidence under low-information "
+        "patient answers.\n"
+        "Requirements:\n"
+        "1. Output exactly one next doctor question, and do not output a diagnosis.\n"
+        "2. If the patient's previous answer was vague, partial, avoidant, or off-topic, prioritize a "
+        "low-pressure clarification of the same evidence dimension.\n"
+        "3. If the patient clearly does not want to discuss a topic, respect that boundary first; ask a "
+        "minimal necessary check, or after repeated refusal move to an adjacent less sensitive topic.\n"
+        "4. Do not mechanically repeat the previous question, and do not treat an insufficient answer as "
+        "sufficient evidence.\n\n"
+        "Visible dialogue history:\n"
+        f"{history_text}\n\n"
+        "Next doctor question:"
+    )
+
+
 def build_closed_llm_messages_en(policy_name: str, history: list[dict[str, str]]) -> list[dict[str, str]]:
     if policy_name == "closed_llm_evidence_aware":
         system = (
@@ -159,7 +180,11 @@ def build_closed_llm_messages_en(policy_name: str, history: list[dict[str, str]]
 
 def build_messages(policy_name: str, history: list[dict[str, str]], language: str = "zh") -> list[dict[str, str]]:
     if policy_name == "reward_centered_v6_patient_v2":
-        prompt = render_reward_centered_v6_prompt(history, max_turns=8)
+        prompt = (
+            render_reward_centered_v6_prompt_en(history, max_turns=8)
+            if language == "en"
+            else render_reward_centered_v6_prompt(history, max_turns=8)
+        )
         return [{"role": "user", "content": prompt}]
     if policy_name == "reward_trained_nobelief":
         if render_reward_training_prompt is None:
