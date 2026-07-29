@@ -32,7 +32,7 @@
       "name": "Little interest or pleasure in doing things",
       "evidence_unit_hints": ["interest_loss", "reduced_pleasure", "motivation", "activities"],
       "criticality": "high",
-      "question_keywords": ["interest", "pleasure", "enjoy", "motivation", "activities", "hobbies", "fun", "like doing", "乐趣", "愉快", "享受", "喜欢做", "提不起兴趣", "没兴趣", "没有兴趣", "兴趣下降", "兴趣减少", "失去兴趣", "没动力", "动力下降", "不想做"]
+      "question_keywords": ["interest", "loss of interest", "lost interest", "pleasure", "enjoy", "motivation", "activities", "hobbies", "fun", "like doing", "feel happy", "feeling happy", "positive emotions", "experience positive", "乐趣", "愉快", "享受", "喜欢做", "提不起兴趣", "没兴趣", "没有兴趣", "兴趣下降", "兴趣减少", "失去兴趣", "没动力", "动力下降", "不想做"]
     },
     {
       "slot": "hopelessness_or_crying",
@@ -40,7 +40,7 @@
       "name": "Feeling down, depressed, or hopeless",
       "evidence_unit_hints": ["depressed_mood", "sadness", "hopelessness", "crying"],
       "criticality": "high",
-      "question_keywords": ["down", "depressed", "hopeless", "sad", "mood", "low mood", "unhappy", "cry", "crying", "情绪", "心情", "情绪状态", "低落", "沮丧", "抑郁", "绝望", "难过", "悲伤", "哭", "哭泣"]
+      "question_keywords": ["down", "depressed", "hopeless", "sad", "mood", "low mood", "unhappy", "cry", "crying", "how have you been feeling", "feeling lately", "feel that way", "emotions", "sense of hope", "thoughts about the future", "hope lately", "情绪", "心情", "情绪状态", "低落", "沮丧", "抑郁", "绝望", "难过", "悲伤", "哭", "哭泣"]
     },
     {
       "slot": "sleep",
@@ -48,7 +48,7 @@
       "name": "Trouble falling or staying asleep, or sleeping too much",
       "evidence_unit_hints": ["insomnia", "sleep_maintenance", "early_waking", "hypersomnia"],
       "criticality": "medium",
-      "question_keywords": ["sleep", "asleep", "insomnia", "falling asleep", "staying asleep", "wake up", "waking", "oversleep", "sleeping too much", "too much sleep", "睡眠", "睡觉", "入睡", "失眠", "醒来", "早醒", "睡不着", "睡太多", "嗜睡"]
+      "question_keywords": ["sleep", "sleeping", "trouble sleeping", "asleep", "insomnia", "falling asleep", "staying asleep", "wake up", "waking", "oversleep", "oversleeping", "sleeping too much", "too much sleep", "睡眠", "睡觉", "入睡", "失眠", "醒来", "早醒", "睡不着", "睡太多", "嗜睡"]
     },
     {
       "slot": "fatigue",
@@ -72,7 +72,7 @@
       "name": "Feeling bad about yourself or that you are a failure",
       "evidence_unit_hints": ["worthlessness", "guilt", "failure", "self_esteem"],
       "criticality": "high",
-      "question_keywords": ["bad about yourself", "feeling bad", "failure", "guilty", "worth", "worthless", "self esteem", "disappointing", "let people down", "自责", "内疚", "愧疚", "失败", "没价值", "价值感", "自我评价", "自尊", "对自己失望", "拖累"]
+      "question_keywords": ["bad about yourself", "feeling bad", "failure", "guilty", "worth", "worthless", "self esteem", "sense of self", "view yourself", "how you view yourself", "disappointing", "let people down", "自责", "内疚", "愧疚", "失败", "没价值", "价值感", "自我评价", "自尊", "对自己失望", "拖累"]
     },
     {
       "slot": "attention_decline",
@@ -80,7 +80,7 @@
       "name": "Trouble concentrating on things",
       "evidence_unit_hints": ["concentration", "attention", "focus", "distractibility"],
       "criticality": "medium",
-      "question_keywords": ["concentrate", "concentrating", "concentration", "focus", "focusing", "attention", "reading", "watching tv", "distracted", "注意力", "集中", "专注", "分心", "走神", "阅读", "看电视", "看书"]
+      "question_keywords": ["concentrate", "concentrating", "concentration", "focus", "focusing", "attention", "reading", "watching tv", "distracted", "difficulty making decisions", "making decisions", "stuck in your thinking", "注意力", "集中", "专注", "分心", "走神", "阅读", "看电视", "看书"]
     },
     {
       "slot": "psychomotor_change",

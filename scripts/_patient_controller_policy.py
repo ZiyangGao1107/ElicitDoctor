@@ -34,6 +34,30 @@ RAPPORT_OR_PERMISSION_CUES = [
     "你觉得可以",
 ]
 
+RAPPORT_OR_PERMISSION_CUES.extend(
+    [
+        "take your time",
+        "no pressure",
+        "that's okay",
+        "that is okay",
+        "if you're comfortable",
+        "if you are comfortable",
+        "if you feel comfortable",
+        "would you be willing",
+        "are you willing",
+        "is it okay",
+        "would it be okay",
+        "we can skip",
+        "you can skip",
+        "you don't have to",
+        "you do not have to",
+        "only if",
+        "as much as you can",
+        "we can start with",
+        "whatever feels",
+    ]
+)
+
 OPEN_NARRATIVE_PATIENT_RESPONSES = {
     "zero_avoidance": "可以，我会根据我的实际情况尽量如实说清楚。",
     "fully_cooperative": "可以，我会尽量说清楚。你可以先问你最需要了解的部分。",

@@ -116,6 +116,28 @@ def normalize_for_match(text: str) -> str:
     return re.sub(r"\s+", "", text)
 
 
+def ascii_keyword_pattern(keyword: str) -> re.Pattern[str] | None:
+    words = re.findall(r"[a-z0-9]+", (keyword or "").lower())
+    if not words:
+        return None
+    body = r"[\W_]*".join(re.escape(word) for word in words)
+    return re.compile(rf"(?<![a-z0-9]){body}(?![a-z0-9])")
+
+
+def keyword_match_start(question: str, keyword: str) -> int:
+    if re.search(r"[A-Za-z0-9]", keyword or ""):
+        pattern = ascii_keyword_pattern(keyword)
+        if pattern is None:
+            return -1
+        match = pattern.search((question or "").lower())
+        return match.start() if match else -1
+    normalized_question = normalize_for_match(question)
+    normalized_keyword = normalize_for_match(keyword)
+    if not normalized_keyword:
+        return -1
+    return normalized_question.find(normalized_keyword)
+
+
 def extract_question_focus(text: str) -> str:
     text = (text or "").strip()
     if not text:
@@ -245,10 +267,7 @@ def match_slot(question: str, slot_def: dict[str, Any]) -> dict[str, Any] | None
     normalized_question = normalize_for_match(question)
     matched = []
     for keyword in slot_def.get("question_keywords", []):
-        normalized_keyword = normalize_for_match(keyword)
-        if not normalized_keyword:
-            continue
-        start = normalized_question.find(normalized_keyword)
+        start = keyword_match_start(question, keyword)
         if start >= 0:
             matched.append({"keyword": keyword, "start": start})
 

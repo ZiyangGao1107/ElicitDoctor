@@ -69,6 +69,54 @@ SPECIFICITY_CUES = [
 
 ANAPHORA_CUES = ["刚才", "这个", "这方面", "这件事", "再说", "再讲", "继续说", "多说"]
 
+SPECIFICITY_CUES.extend(
+    [
+        "specific",
+        "specifically",
+        "detail",
+        "details",
+        "how often",
+        "frequency",
+        "how long",
+        "duration",
+        "how severe",
+        "severity",
+        "intensity",
+        "when did",
+        "when was",
+        "last time",
+        "recently",
+        "example",
+        "for example",
+        "impact",
+        "affect",
+        "affected",
+        "interfere",
+        "trouble with",
+    ]
+)
+
+ANAPHORA_CUES.extend(
+    [
+        "about that",
+        "that issue",
+        "this issue",
+        "that part",
+        "this part",
+        "that area",
+        "this area",
+        "what you mentioned",
+        "what we talked about",
+        "earlier",
+        "previously",
+        "tell me more",
+        "say more",
+        "go on",
+        "continue",
+        "keep talking",
+    ]
+)
+
 
 INITIAL_QUESTION_OVERRIDES = {
     "binge_eating": "我想了解一下最近有没有暴饮暴食、吃很多或控制不住进食的情况？",
@@ -126,7 +174,100 @@ def normalize_severity(level: str) -> str:
 
 
 def contains_any(text: str, cues: list[str]) -> bool:
-    return any(cue in (text or "") for cue in cues)
+    text_lc = str(text or "").lower()
+    return any(str(cue or "").lower() in text_lc for cue in cues if cue)
+
+
+PREVIOUS_SLOT_FOLLOWUP_CUES = [
+    "关于",
+    "刚才",
+    "前面",
+    "这方面",
+    "这件事",
+    "这个",
+    "它",
+    "继续",
+    "再说",
+    "多说",
+]
+
+PREVIOUS_SLOT_FOLLOWUP_ALIASES = {
+    "sleep": ["睡眠", "睡觉", "失眠", "入睡", "早醒"],
+    "appetite_loss": ["胃口", "吃饭", "食欲", "吃不下"],
+    "binge_eating": ["吃东西控制不住", "暴食", "暴饮暴食", "吃很多"],
+    "hopelessness_or_crying": ["低落", "撑不住", "绝望", "哭", "难过"],
+    "suicide_or_self_harm": ["安全相关的想法", "安全想法", "伤害自己", "自伤", "自杀", "轻生"],
+    "work_status": ["工作状态", "工作", "上班", "任务", "绩效"],
+    "school_or_study_status": ["学习状态", "学习", "学校", "上课", "作业", "考试"],
+    "attention_decline": ["注意力", "专注", "集中"],
+    "memory_problem": ["记忆", "记忆或反应", "健忘"],
+    "cognitive_slowing": ["思考反应", "思考", "反应慢", "脑子", "头脑"],
+    "mania_screen": ["精力异常升高", "精力升高", "精力异常", "兴奋", "冲动"],
+    "hallucination": ["不真实或难解释的感受", "不真实", "难解释的感受", "幻觉", "幻听"],
+    "chest_tightness": ["胸闷", "胸口", "呼吸不舒服", "胸口或呼吸不舒服"],
+    "dizziness_or_headache": ["头晕", "头痛", "头疼"],
+    "palpitation": ["心慌", "心悸", "心跳"],
+    "menstrual_status": ["月经", "经期", "月经状态"],
+    "romantic_status": ["感情关系", "恋爱", "伴侣"],
+    "parent_awareness": ["家人是否知道", "家人知道", "父母知道"],
+    "personality": ["性格", "处事方式", "应对方式"],
+    "family_psychiatric_history": ["家族史", "精神疾病史", "家里人"],
+}
+
+PREVIOUS_SLOT_FOLLOWUP_CUES.extend(
+    [
+        "earlier",
+        "previously",
+        "that issue",
+        "this issue",
+        "that part",
+        "this part",
+        "that area",
+        "this area",
+        "what you mentioned",
+        "what we talked about",
+        "continue",
+        "tell me more",
+        "say more",
+    ]
+)
+
+PREVIOUS_SLOT_FOLLOWUP_ALIASES.update(
+    {
+        "anhedonia": ["interest", "pleasure", "enjoy", "motivation", "activities", "hobbies"],
+        "hopelessness_or_crying": ["mood", "low mood", "depressed", "hopeless", "sad", "crying"],
+        "sleep": ["sleep", "asleep", "insomnia", "wake up", "waking", "oversleep"],
+        "fatigue": ["tired", "fatigue", "energy", "little energy", "exhausted", "drained"],
+        "appetite_loss": ["appetite", "eating", "food", "weight", "hungry", "overeating"],
+        "self_worth": ["worth", "worthless", "failure", "guilty", "self esteem", "let people down"],
+        "attention_decline": ["concentration", "concentrate", "focus", "attention", "distracted"],
+        "psychomotor_change": ["moving slowly", "speaking slowly", "slowed down", "restless", "fidgety"],
+    }
+)
+
+
+def normalize_query_surface(text: Any) -> str:
+    return "".join(ch for ch in str(text or "").lower() if ch.isalnum())
+
+
+def looks_like_previous_slot_followup(question: str, previous_slot: Any) -> bool:
+    if not previous_slot:
+        return False
+    if contains_any(question, PREVIOUS_SLOT_FOLLOWUP_CUES):
+        return True
+    question_norm = normalize_query_surface(question)
+    slot_norm = normalize_query_surface(previous_slot)
+    if slot_norm and slot_norm in question_norm:
+        return True
+    display = SLOT_DISPLAY.get(str(previous_slot), "")
+    display_norm = normalize_query_surface(display)
+    if display_norm and display_norm in question_norm:
+        return True
+    for alias in PREVIOUS_SLOT_FOLLOWUP_ALIASES.get(str(previous_slot), []):
+        alias_norm = normalize_query_surface(alias)
+        if alias_norm and alias_norm in question_norm:
+            return True
+    return False
 
 
 def clamp_probability(value: float) -> float:
@@ -302,6 +443,17 @@ class DynamicPatientControllerV1:
             pred["query_interpreter_status"] = "anaphora_fallback"
             pred["query_interpreter_confidence"] = "medium"
             routing_source = "anaphora_to_previous_target"
+        elif not target and state.get("last_target_slot") and looks_like_previous_slot_followup(
+            doctor_question,
+            state.get("last_target_slot"),
+        ):
+            target = state["last_target_slot"]
+            pred["simulator_internal_target_node"] = target
+            pred["target_tree_node"] = target
+            pred["query_interpreter_status"] = "previous_slot_followup_fallback"
+            pred["query_interpreter_confidence"] = "medium"
+            pred["previous_slot_followup_fallback_reason"] = "surface_cue_or_previous_slot_label"
+            routing_source = "previous_slot_followup_to_previous_target"
         return target, pred, routing_source
 
     def _random_low_disclosure_triggered(self, *parts: Any) -> bool:
