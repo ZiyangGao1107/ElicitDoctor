@@ -24,7 +24,16 @@ from _patient_controller_base import (
     select_pilot_groups,
 )
 from online_query_interpreter import load_json
-from official_mdd5k_protocol import OfficialTopicState, dynamic_select_official_topics
+try:
+    from official_mdd5k_protocol import OfficialTopicState, dynamic_select_official_topics
+except ModuleNotFoundError:
+    OfficialTopicState = Any
+
+    def dynamic_select_official_topics(*args: Any, **kwargs: Any) -> list[Any]:
+        raise ModuleNotFoundError(
+            "official_mdd5k_protocol is required for mdd5k_official_protocol_doctor, "
+            "but is not required for closed/source-agnostic online replay."
+        )
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]

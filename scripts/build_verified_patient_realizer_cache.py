@@ -82,6 +82,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--primary-verification-records", type=Path, required=True)
     parser.add_argument("--repair-request-path", type=Path, default=None)
     parser.add_argument("--repair-verification-records", type=Path, default=None)
+    parser.add_argument("--rule-verification-records", type=Path, default=None)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--include-warned", action="store_true")
     parser.add_argument(
@@ -89,6 +90,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Fill remaining failed records with source_rule_based_patient_response for 100% cache coverage.",
     )
+    parser.add_argument("--dataset-prefix", default="mdd5k")
     return parser.parse_args()
 
 
@@ -100,6 +102,7 @@ def main() -> None:
 
     repair_requests = by_request_id(args.repair_request_path) if args.repair_request_path else {}
     repair_verifications = by_request_id(args.repair_verification_records) if args.repair_verification_records else {}
+    rule_verifications = by_request_id(args.rule_verification_records) if args.rule_verification_records else {}
 
     repair_by_original: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
     for repair_id, repair_request in repair_requests.items():
@@ -148,15 +151,30 @@ def main() -> None:
         if args.fallback_to_rule:
             fallback_response = clean_text(request.get("source_rule_based_patient_response"))
             if fallback_response:
+                rule_verification = rule_verifications.get(request_id)
+                if rule_verifications and not accepted(rule_verification, args.include_warned):
+                    skipped["rule_fallback_failed_verifier"] += 1
+                    continue
                 cache_records.append(
                     cache_record(
                         request=request,
-                        verification=None,
-                        patient_response=fallback_response,
-                        source="rule_fallback_after_failed_llm_or_repair",
+                        verification=rule_verification,
+                        patient_response=(
+                            clean_text(rule_verification.get("patient_response"))
+                            if rule_verification
+                            else fallback_response
+                        ),
+                        source=(
+                            "rule_verified_fallback_after_failed_llm_or_repair"
+                            if rule_verification
+                            else "rule_fallback_after_failed_llm_or_repair"
+                        ),
                     )
                 )
-                source_counter["rule_fallback_after_failed_llm_or_repair"] += 1
+                if rule_verification:
+                    source_counter["rule_verified_fallback_after_failed_llm_or_repair"] += 1
+                else:
+                    source_counter["rule_fallback_after_failed_llm_or_repair"] += 1
             else:
                 skipped["missing_rule_fallback_response"] += 1
         else:
@@ -165,13 +183,15 @@ def main() -> None:
     suffix = "include_warned" if args.include_warned else "clean_only"
     if args.fallback_to_rule:
         suffix += "_with_rule_fallback"
-    cache_path = args.output_dir / f"mdd5k_verified_patient_response_cache_repair_{suffix}.jsonl"
-    summary_path = args.output_dir / f"mdd5k_verified_patient_response_cache_repair_summary_{suffix}.json"
+    cache_path = args.output_dir / f"{args.dataset_prefix}_verified_patient_response_cache_repair_{suffix}.jsonl"
+    summary_path = args.output_dir / f"{args.dataset_prefix}_verified_patient_response_cache_repair_summary_{suffix}.json"
     summary = {
+        "dataset_prefix": args.dataset_prefix,
         "primary_request_path": str(args.primary_request_path),
         "primary_verification_records": str(args.primary_verification_records),
         "repair_request_path": str(args.repair_request_path) if args.repair_request_path else None,
         "repair_verification_records": str(args.repair_verification_records) if args.repair_verification_records else None,
+        "rule_verification_records": str(args.rule_verification_records) if args.rule_verification_records else None,
         "cache_path": str(cache_path),
         "num_primary_requests": len(primary_requests),
         "num_cached": len(cache_records),

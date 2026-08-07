@@ -17,6 +17,9 @@ from _patient_controller_policy import (
 
 
 TERMINATION_RESPONSES = {
+    "zero_avoidance": "可以，我会继续根据实际情况如实说清楚。",
+    "fully_cooperative": "可以，我会继续尽量说清楚。",
+    "random_disclosure": "我现在有点累了，可能想先停一下，之后再继续聊可以吗？",
     "mild_low_info": "我现在有点累了，可能想先停一下，之后再继续聊可以吗？",
     "moderate_low_info": "我现在不太想继续说了，感觉有点撑不住，想先到这里。",
     "severe_low_info": "我不太想继续聊了，也不想细说，细节不太想展开。现在说这些让我有点受不了，先停一下吧。",
@@ -66,7 +69,14 @@ class DynamicPatientControllerV32(DynamicPatientControllerV31):
     @staticmethod
     def _initial_patient_state(*, profile_id: str, severity: str, readiness: float | None) -> dict[str, Any]:
         trait = trait_for_profile(profile_id)
-        trust = {"mild_low_info": 0.68, "moderate_low_info": 0.54, "severe_low_info": 0.38}.get(
+        trust = {
+            "zero_avoidance": 0.90,
+            "fully_cooperative": 0.82,
+            "random_disclosure": 0.60,
+            "mild_low_info": 0.68,
+            "moderate_low_info": 0.54,
+            "severe_low_info": 0.38,
+        }.get(
             severity,
             0.60,
         )
@@ -74,7 +84,14 @@ class DynamicPatientControllerV32(DynamicPatientControllerV31):
             trust += 0.06
         elif trait == "avoidant":
             trust -= 0.07
-        engagement = {"mild_low_info": 0.66, "moderate_low_info": 0.54, "severe_low_info": 0.42}.get(
+        engagement = {
+            "zero_avoidance": 0.90,
+            "fully_cooperative": 0.82,
+            "random_disclosure": 0.60,
+            "mild_low_info": 0.66,
+            "moderate_low_info": 0.54,
+            "severe_low_info": 0.42,
+        }.get(
             severity,
             0.62,
         )
@@ -87,7 +104,14 @@ class DynamicPatientControllerV32(DynamicPatientControllerV31):
             "engagement": round(engagement, 4),
             "defensiveness": round(clamp(0.95 - trust, 0.08, 0.90), 4),
             "fatigue": 0.0,
-            "termination_risk": {"mild_low_info": 0.04, "moderate_low_info": 0.10, "severe_low_info": 0.20}.get(
+            "termination_risk": {
+                "zero_avoidance": 0.0,
+                "fully_cooperative": 0.01,
+                "random_disclosure": 0.06,
+                "mild_low_info": 0.04,
+                "moderate_low_info": 0.10,
+                "severe_low_info": 0.20,
+            }.get(
                 severity,
                 0.06,
             ),
@@ -115,6 +139,9 @@ class DynamicPatientControllerV32(DynamicPatientControllerV31):
         slot_map = patient_state.setdefault("slot_disclosure_readiness", {})
         if target_slot in slot_map:
             return float(slot_map[target_slot])
+        if severity in {"fully_cooperative", "zero_avoidance"}:
+            slot_map[target_slot] = 0.92
+            return 0.92
         base = float(patient_state.get("engagement", 0.50))
         if slot_sensitivity(target_slot) == "high":
             base -= 0.13
@@ -125,6 +152,8 @@ class DynamicPatientControllerV32(DynamicPatientControllerV31):
 
     @staticmethod
     def _should_terminate_before_answer(patient_state: dict[str, Any], severity: str) -> tuple[bool, str | None]:
+        if severity in {"fully_cooperative", "zero_avoidance"}:
+            return False, None
         if severity != "severe_low_info":
             if float(patient_state.get("termination_risk", 0.0)) >= 0.88:
                 return True, "fatigue_or_low_engagement"
@@ -357,6 +386,9 @@ class DynamicPatientControllerV32(DynamicPatientControllerV31):
         fatigue_delta += 0.025 if is_pressure or quality == "poor" else 0.0
         fatigue_delta += 0.015 if sensitivity == "high" else 0.0
         fatigue_delta += 0.020 if refusal_like else 0.0
+        if severity in {"fully_cooperative", "zero_avoidance"}:
+            trust_delta = max(trust_delta, 0.0)
+            fatigue_delta *= 0.35
 
         positive_disclosure = float(response.get("delta_cumulative_slot_sufficiency") or 0.0) > 0.0
         engagement_delta = trust_delta * 0.45 - fatigue_delta * 0.40

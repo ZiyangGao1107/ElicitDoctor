@@ -39,19 +39,23 @@ Selection rule:
    evaluation and reject checkpoints with fallback rows, hard errors, or obvious
    severe degradation.
 
-Default SFT candidates:
+Default SFT candidates for historical SFT-only selection:
 
 ```text
 checkpoint-200, checkpoint-400, checkpoint-600, checkpoint-800,
 checkpoint-1000, final_lora_adapter
 ```
 
-If a run has fewer steps, include every saved checkpoint plus the final adapter.
+These SFT-only checkpoints are diagnostic for warm-start quality. They should
+not be mixed directly with RL method checkpoints in the final method comparison
+unless the same normalized milestone grid is available.
 
 ### Value Model V2
 
-Value Model V2 predicts same-state action value: which doctor question is likely
-to recover more canonical evidence under the remaining dialogue budget.
+Value Model V2 predicts same-state long-horizon belief value: which doctor
+question is likely to reduce visible uncertainty, preserve or improve patient
+openness, and create better future belief updates. It must not use canonical
+evidence recovery as the direct value target for the main method.
 
 Selection rule:
 
@@ -61,7 +65,8 @@ Selection rule:
 4. Prefer lower mean oracle regret.
 
 This selects the value model that best ranks candidate questions at the same
-dialogue state, not the model with the lowest generic regression loss.
+dialogue state by belief-guided long-horizon value, not the model with the
+lowest generic regression loss.
 
 ### GRPO / ValueAug / RFV
 
@@ -86,16 +91,25 @@ Hard filters:
 - optional baseline mean/severe margins may be applied when comparing against an
   existing best model
 
-Default policy candidates for each method:
+Official comparable policy grid:
 
 ```text
-checkpoint-200, checkpoint-400, checkpoint-800, checkpoint-1200,
-checkpoint-1600, final_lora_adapter
+25%, 50%, 75%, 100%, final_lora_adapter
 ```
 
-Use the same candidate grid for standard GRPO, ValueAug-GRPO, and RFV. If one
-method trains for a shorter budget, compare it at its predeclared milestones and
-state the shorter budget explicitly.
+Use the same normalized candidate grid for standard GRPO, ValueAug-GRPO, and
+RFV. For the current historical runs this maps to:
+
+```text
+RFV-v2 1600-step run:      checkpoint-400, checkpoint-800, checkpoint-1200, checkpoint-1600, final_lora_adapter
+GRPO-v6 1500-step run:     checkpoint-400, checkpoint-800, checkpoint-1200, checkpoint-1500, final_lora_adapter
+ValueAug 1500-step run:    checkpoint-400, checkpoint-800, checkpoint-1200, checkpoint-1500, final_lora_adapter
+```
+
+Earlier checkpoints such as `checkpoint-200` are allowed only as diagnostic
+learning-curve points. They are not eligible for official method selection
+unless every compared method has the same normalized early milestone declared
+before evaluation.
 
 Method-specific details:
 
@@ -105,7 +119,9 @@ Method-specific details:
   train policy checkpoints and select the policy by the same online recovery
   rule.
 - RFV: train on canonical evidence recovery / residual future-value reward and
-  select policy checkpoints by the same online recovery rule.
+  select policy checkpoints by the same online recovery rule. Treat this as an
+  outcome-supervision or oracle-style baseline, separate from the belief-guided
+  Value Model V2 method.
 
 ### Turn24 vs Turn32
 

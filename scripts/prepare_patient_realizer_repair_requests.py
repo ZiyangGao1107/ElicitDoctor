@@ -19,6 +19,14 @@ SEVERE_SAFE_CUE_PHRASES = [
     "可以先跳过",
 ]
 
+EN_SEVERE_SAFE_CUE_PHRASES = [
+    "I am not sure how to explain that",
+    "I do not really want to go into detail",
+    "I do not know how to answer that",
+    "Could we come back to that later",
+    "It is hard to talk about",
+]
+
 
 def clean_text(text: Any) -> str:
     return " ".join(str(text or "").replace("\u3000", " ").split())
@@ -97,6 +105,10 @@ def collect_verifier_forbidden_terms(verification: dict[str, Any]) -> list[str]:
 def repair_instructions_for_errors(hard_errors: list[str]) -> list[str]:
     instructions = []
     error_set = set(hard_errors)
+    if "reference_under_informative" in error_set:
+        instructions.append(
+            "Verifier found the response under-informative. Increase allowed-evidence coverage: include the concrete content from visibility_contract.can_say_exact and the key content from visibility_contract.can_paraphrase_weakly. Do not make this repair shorter or more vague."
+        )
     if error_set & {
         "removed_evidence_leakage",
         "withheld_evidence_leakage",
@@ -118,6 +130,10 @@ def repair_instructions_for_errors(hard_errors: list[str]) -> list[str]:
         instructions.append(
             "The severe patient needs a natural boundary or uncertainty cue, without adding clinical details."
         )
+    if "zero_avoidance_refusal_or_deflection" in error_set:
+        instructions.append(
+            "The zero_avoidance cooperative patient must not refuse, deflect, or under-disclose allowed evidence; answer truthfully from the allowed evidence only."
+        )
     if not instructions:
         instructions.append("Repair the response by being shorter, less specific, and strictly grounded.")
     return instructions
@@ -137,8 +153,18 @@ def requires_ultra_safe_boundary(hard_errors: list[str]) -> bool:
     )
 
 
+def infer_payload_language(payload: dict[str, Any]) -> str:
+    task = str(payload.get("task") or "")
+    output_format = payload.get("output_format") or {}
+    response_format = str(output_format.get("patient_response") or "") if isinstance(output_format, dict) else ""
+    if "English" in task or "English" in response_format:
+        return "en"
+    return "zh"
+
+
 def tighten_payload(payload: dict[str, Any], verification: dict[str, Any]) -> dict[str, Any]:
     payload = json.loads(json.dumps(payload, ensure_ascii=False))
+    language = infer_payload_language(payload)
     hard_errors = verification.get("hard_errors") or []
     warnings = verification.get("warnings") or []
     patient_response = clean_text(verification.get("patient_response"))
@@ -146,6 +172,7 @@ def tighten_payload(payload: dict[str, Any], verification: dict[str, Any]) -> di
     verifier_forbidden_terms = collect_verifier_forbidden_terms(verification)
     repair_instructions = repair_instructions_for_errors(hard_errors)
     ultra_safe_boundary = requires_ultra_safe_boundary(hard_errors)
+    under_informative = "reference_under_informative" in set(hard_errors)
 
     repair = {
         "repair_attempt": 1,
@@ -183,9 +210,21 @@ def tighten_payload(payload: dict[str, Any], verification: dict[str, Any]) -> di
             "Because verifier found leakage or topic-specific claims, ignore the mild/moderate disclosure style for this repair and use a generic boundary-only answer with zero clinical facts."
         )
     if severity == "severe_low_info":
+        safe_cue_phrases = EN_SEVERE_SAFE_CUE_PHRASES if language == "en" else SEVERE_SAFE_CUE_PHRASES
         constraints.append(
             "The repaired severe_low_info patient_response must include at least one exact boundary/vague cue phrase: "
-            + ", ".join(SEVERE_SAFE_CUE_PHRASES)
+            + ", ".join(safe_cue_phrases)
+        )
+    if severity == "zero_avoidance":
+        constraints.append(
+            "The repaired zero_avoidance patient_response must be cooperative and truthful: do not refuse, deflect, or intentionally omit allowed evidence, and do not add facts beyond the visibility_contract."
+        )
+    if under_informative and not ultra_safe_boundary:
+        constraints.append(
+            "This repair is for insufficient information coverage. Preserve safety constraints, but expand the answer using only allowed evidence instead of reducing specificity."
+        )
+        constraints.append(
+            "If visibility_contract.can_say_exact is non-empty, mention every can_say_exact item in natural wording. If can_paraphrase_weakly is non-empty, include its key meaning without adding unsupported details."
         )
     payload["hard_constraints"] = constraints
 
@@ -207,19 +246,48 @@ def tighten_payload(payload: dict[str, Any], verification: dict[str, Any]) -> di
         visibility_contract["can_paraphrase_weakly"] = []
         visibility_contract["allowed_hint_count"] = 0
         visibility_contract["forbidden_surface_terms"] = dedupe_texts(existing_terms + verifier_forbidden_terms)
-        visibility_contract["can_hint_about_topic"] = (
-            "generic words only, such as 这个/这方面/这件事; do not name the exact symptom slot"
-        )
-        visibility_contract["allowed_response_templates"] = [
-            "这个我现在不太想说。",
-            "这方面我还说不清。",
-            "可以先跳过这个吗？",
-            "我现在不知道怎么说。",
-        ]
+        if language == "en":
+            visibility_contract["can_hint_about_topic"] = (
+                "generic words only, such as this/that/this topic; do not name the exact symptom slot"
+            )
+            visibility_contract["allowed_response_templates"] = [
+                "I am not sure how to explain that right now.",
+                "I do not really want to go into detail about that.",
+                "Could we come back to that later?",
+                "I do not know how to answer that right now.",
+            ]
+        else:
+            visibility_contract["can_hint_about_topic"] = (
+                "generic words only, such as 这个/这方面/这件事; do not name the exact symptom slot"
+            )
+            visibility_contract["allowed_response_templates"] = [
+                "这个我现在不太想说。",
+                "这方面我还说不清。",
+                "可以先跳过这个吗？",
+                "我现在不知道怎么说。",
+            ]
         payload["visibility_contract"] = visibility_contract
         payload["style_requirement"] = (
             "Repair unsafe response: give a natural but very short boundary/vague reply. "
             "Do not name symptoms, duration, frequency, risk, diagnosis, event, or behavior."
+        )
+    elif under_informative:
+        visibility_contract = dict(payload.get("visibility_contract") or {})
+        allowed_exact = list(visibility_contract.get("can_say_exact") or [])
+        allowed_weak = list(visibility_contract.get("can_paraphrase_weakly") or [])
+        allowed_count = len(allowed_exact) + len(allowed_weak)
+        budget["max_sentences"] = max(int(budget.get("max_sentences") or 2), min(4, max(2, allowed_count)))
+        budget["max_chinese_chars"] = max(int(budget.get("max_chinese_chars") or 60), 120)
+        budget["clinical_fact_budget"] = max(int(budget.get("clinical_fact_budget") or 1), max(2, allowed_count))
+        budget["required_style"] = (
+            "informative grounded repair; cover allowed evidence clearly without adding unsupported facts"
+        )
+        progressive_state = dict(payload.get("progressive_disclosure_state") or {})
+        progressive_state["repair_override"] = "Verifier rejected the previous response as under-informative; increase allowed evidence coverage."
+        payload["progressive_disclosure_state"] = progressive_state
+        payload["style_requirement"] = (
+            "Repair under-informative response: give a cooperative, concrete answer that covers the allowed evidence in the visibility_contract. "
+            "Do not invent facts outside the allowed evidence."
         )
     else:
         budget["max_sentences"] = min(int(budget.get("max_sentences") or 2), 2)
@@ -233,6 +301,8 @@ def build_repair_request(original: dict[str, Any], verification: dict[str, Any])
     messages = list(original.get("messages") or [])
     payload = parse_user_payload(messages)
     payload = tighten_payload(payload, verification)
+    language = infer_payload_language(payload)
+    response_language = "English" if language == "en" else "Chinese"
     request = dict(original)
     request["request_id"] = f"{original.get('request_id')}::repair1"
     request["repair_of_request_id"] = original.get("repair_of_request_id") or original.get("request_id")
@@ -240,7 +310,7 @@ def build_repair_request(original: dict[str, Any], verification: dict[str, Any])
     request["prompt_protocol_version"] = f"{original.get('prompt_protocol_version', 'unknown')}+repair_v1"
     request["messages"] = replace_user_payload(messages, payload)
     request["expected_output"] = {
-        "patient_response": "safer repaired natural Chinese response constrained by allowed evidence",
+        "patient_response": f"safer repaired natural {response_language} response constrained by allowed evidence",
         "brief_self_check": "short no-new-fact self check",
     }
     return request
@@ -253,6 +323,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--include-warned", action="store_true", help="Repair warned accepted records as well as hard failures.")
     parser.add_argument("--max-repairs", type=int, default=0, help="0 means all failed records.")
+    parser.add_argument("--dataset-prefix", default="mdd5k")
     return parser.parse_args()
 
 
@@ -286,9 +357,10 @@ def main() -> None:
         if args.max_repairs and len(repair_requests) >= args.max_repairs:
             break
 
-    request_path = args.output_dir / "mdd5k_llm_patient_realizer_repair_requests.jsonl"
-    summary_path = args.output_dir / "mdd5k_llm_patient_realizer_repair_request_summary.json"
+    request_path = args.output_dir / f"{args.dataset_prefix}_llm_patient_realizer_repair_requests.jsonl"
+    summary_path = args.output_dir / f"{args.dataset_prefix}_llm_patient_realizer_repair_request_summary.json"
     summary = {
+        "dataset_prefix": args.dataset_prefix,
         "source_request_path": str(args.request_path),
         "source_verification_records": str(args.verification_records),
         "repair_request_path": str(request_path),

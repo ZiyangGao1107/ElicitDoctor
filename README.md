@@ -31,8 +31,9 @@ The short script index is in `scripts/README.md`.
   providers.
 - `scripts/build_final_patient_sft_from_online_records.py`: SFT data builder
   from verified final-patient online records.
-- `scripts/build_final_patient_action_value_data.py`: same-state action-value
-  data builder for Value Model V2.
+- `scripts/build_belief_guided_query_reward_data.py`: builds visible-dialogue
+  belief-guided query reward and long-horizon value labels without using
+  canonical evidence as reward.
 - `scripts/build_final_patient_rfv_data.py`: residual
   future-value data builder.
 - `scripts/build_final_patient_grpo_groups.py`: GRPO
@@ -53,12 +54,34 @@ Final evaluation records must satisfy:
 See `docs/final_patient_setting.md` for the controller, realizer, verifier, and
 repair-loop design.
 
+The default disclosure settings remain `mild_low_info`, `moderate_low_info`,
+and `severe_low_info`. Additional patient settings are available for controlled
+stress tests: `random_disclosure` with configurable
+`RANDOM_LOW_DISCLOSURE_PROB`, `fully_cooperative`, and `zero_avoidance`.
+`zero_avoidance` is the cooperative-patient condition: the patient answers
+truthfully from the profile/evidence content, does not avoid or intentionally
+under-disclose, and still cannot invent facts outside the allowed evidence.
+
 ## Data Policy
 
 The public MDD-derived patient profiles, canonical evidence files, and F32/F41
 profile splits are stored under `data/`. Large JSONL files are tracked with Git
 LFS. Generated model outputs, logs, checkpoints, and closed-source API traces are
 not part of the release package.
+
+DAIC-WoZ and Extended-DAIC are supported by the same profile-grounded simulator
+contract, but the DAIC data itself should be transferred privately under the
+original DAIC release terms. Place the prepared private copy at `data/daic/` and
+run:
+
+```bash
+python scripts/build_daic_profile_environment.py
+```
+
+This builds DAIC as a PHQ-8 task with exactly eight symptom slots and exactly
+two diagnosis labels: `Depressed` and `control`. DAIC-WoZ `train` is used for
+training, DAIC-WoZ `valid` is used for validation/model selection, and all
+Extended-DAIC rows are used only as `test`.
 
 See `docs/dataset_card.md` for the expected JSONL schemas and release policy.
 
@@ -75,6 +98,34 @@ models, runs, splits, or turn budgets.
 
 See `docs/closed_llm_doctor_eval.md`.
 
+For MDD-5K closed-source doctor evaluation with the cooperative
+zero-avoidance patient setting, keep the default MDD paths and set only the
+patient-setting environment variable:
+
+```bash
+export CLOSED_PROVIDER=openai_compatible
+export CLOSED_MODEL=gpt-4.1-mini
+export CLOSED_ENV_FILE=.env
+export SEVERITIES="zero_avoidance"
+bash scripts/run_final_patient_doctor_eval_one.sh closed_evidence outputs_mdd5k_closed_zero_avoidance 24
+```
+
+For DAIC closed-source doctor evaluation, use the same runner and set the
+dataset environment variables:
+
+```bash
+export DATASET_PREFIX=daic
+export LANGUAGE=en
+export EVAL_SPLITS=test
+export MAX_PROFILES=219
+export MAX_GROUPS=1752
+export GROUP_DIR=data/daic/profile_split
+export CLOSED_PROVIDER=openai_compatible
+export CLOSED_MODEL=gpt-4.1-mini
+export CLOSED_ENV_FILE=.env
+bash scripts/run_final_patient_doctor_eval_one.sh closed_evidence outputs_daic_closed_eval 24
+```
+
 ## Minimal Environment
 
 Python 3.10+ is recommended.
@@ -88,10 +139,11 @@ external `.env` file or environment variables. Do not commit keys.
 
 ## Value Model V2
 
-The maintained value-model route is same-state action value: given one visible
-dialogue state and several candidate doctor questions, estimate which question
-will recover more canonical evidence over the remaining dialogue. See
-`docs/value_model_v2.md`.
+The maintained value-model route is belief-guided: estimate whether a doctor
+question targets unresolved belief regions, reduces visible diagnostic
+uncertainty, and improves future patient openness. Canonical evidence recovery
+is reserved for final evaluation and oracle-style RFV baselines, not the direct
+query reward. See `docs/value_model_v2.md`.
 
 ## Repository Safety
 

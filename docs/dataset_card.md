@@ -40,6 +40,32 @@ for evidence recovery scoring.
 
 These files define the F32/F41 profile-grounded train/dev/test split.
 
+### Private DAIC Layout
+
+DAIC-WoZ and Extended-DAIC are supported, but the raw/prepared DAIC artifacts
+should not be published in this repository unless the distributor has the
+necessary DAIC release rights. A private transfer should place the directory at
+`data/daic/`, then run:
+
+```bash
+python scripts/build_daic_profile_environment.py
+```
+
+The generated DAIC environment follows the same profile-grounded contract as
+MDD-5K:
+
+- `data/daic/patient_profiles/daic_dialogue_derived_patient_profiles.jsonl`
+- `data/daic/profile_split/daic_profile_grounded_environment_train_groups.jsonl`
+- `data/daic/profile_split/daic_profile_grounded_environment_valid_groups.jsonl`
+- `data/daic/profile_split/daic_profile_grounded_environment_test_groups.jsonl`
+- `data/daic/canonical_evidence/daic_tree_aligned_canonical_evidence_units.jsonl`
+- `data/daic/canonical_evidence/daic_surface_to_canonical_evidence_links.jsonl`
+
+DAIC is defined as a PHQ-8 depression-screening task: the evaluator slots are
+exactly the eight PHQ-8 items, and labels are exactly `Depressed` and `control`.
+DAIC-WoZ `train` is used for training, DAIC-WoZ `valid` is used for validation
+and model selection, and all Extended-DAIC rows are used only as `test`.
+
 ## Expected Inputs
 
 The full pipeline expects JSON or JSONL files for:
@@ -107,6 +133,8 @@ Published in this repository:
 
 - method code
 - public MDD-derived profile/evidence/split data under `data/`
+- DAIC preprocessing and evaluation code, but not DAIC private data unless
+  separately authorized
 - schema documentation
 - aggregate metrics
 - scripts that read external data paths

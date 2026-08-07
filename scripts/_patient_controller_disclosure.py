@@ -20,6 +20,7 @@ from _patient_controller_base import (
     DynamicPatientControllerV1,
     contains_any,
     iter_jsonl,
+    load_group_records,
     make_initial_question,
     make_response_text,
     make_second_targeted_followup_question,
@@ -83,6 +84,227 @@ PRESSURE_CUES = [
     "不能跳过",
 ]
 
+BROAD_CATEGORY_CHOICE_CUES = [
+    "大概方向",
+    "不说细节",
+    "不用说细节",
+    "先不展开",
+    "只说方向",
+    "哪一块",
+    "哪方面",
+    "更受影响",
+    "更困扰",
+]
+
+CHOICE_CUES = ["还是", "或者", "哪一个", "哪种", "哪类"]
+
+REAL_SPECIFICITY_CUES = [
+    "具体",
+    "频率",
+    "多久",
+    "持续",
+    "程度",
+    "什么时候",
+    "最近一次",
+    "例子",
+    "影响",
+    "有没有",
+    "偶尔",
+    "经常",
+    "入睡",
+    "早醒",
+    "醒来",
+    "吃不下",
+    "胃口",
+    "精力",
+    "做事",
+]
+
+REAL_EMPATHY_OR_PERMISSION_CUES = [
+    "如果可以",
+    "方便",
+    "愿意",
+    "不想说也没关系",
+    "不用说细节",
+    "不用展开",
+    "先不说原因",
+    "只看",
+    "只说",
+    "可以的",
+    "慢慢",
+    "我理解",
+    "不用勉强",
+]
+
+REAL_PRESSURE_CUES = [
+    "必须",
+    "一定要",
+    "不能跳过",
+    "赶紧",
+    "不说不行",
+]
+
+BROAD_CATEGORY_CHOICE_CUES.extend(
+    [
+        "which area",
+        "which part",
+        "which one",
+        "what area",
+        "what part",
+        "broadly",
+        "without details",
+        "no details",
+        "you can just say",
+        "more affected",
+        "more difficult",
+    ]
+)
+
+CHOICE_CUES.extend(["either", "which one", "which kind", "which of these"])
+
+REAL_SPECIFICITY_CUES.extend(
+    [
+        "specific",
+        "specifically",
+        "detail",
+        "details",
+        "how often",
+        "frequency",
+        "how long",
+        "duration",
+        "how severe",
+        "severity",
+        "intensity",
+        "when did",
+        "when was",
+        "last time",
+        "recently",
+        "example",
+        "for example",
+        "impact",
+        "affect",
+        "affected",
+        "interfere",
+        "fall asleep",
+        "wake up",
+        "waking",
+        "appetite",
+        "energy",
+        "doing things",
+    ]
+)
+
+REAL_EMPATHY_OR_PERMISSION_CUES.extend(
+    [
+        "take your time",
+        "no pressure",
+        "that's okay",
+        "that is okay",
+        "if you're comfortable",
+        "if you are comfortable",
+        "if you feel comfortable",
+        "would you be willing",
+        "are you willing",
+        "is it okay",
+        "would it be okay",
+        "we can skip",
+        "you can skip",
+        "you don't have to",
+        "you do not have to",
+        "only if",
+        "as much as you can",
+        "we can start with",
+        "whatever feels",
+    ]
+)
+
+REAL_PRESSURE_CUES.extend(
+    [
+        "you must",
+        "you have to",
+        "have to answer",
+        "cannot skip",
+        "can't skip",
+        "need to answer",
+        "tell me now",
+        "answer directly",
+    ]
+)
+
+SLOT_DISPLAY_NAMES = {
+    "sleep": "睡眠",
+    "energy_or_fatigue": "精力",
+    "appetite_or_eating": "吃饭",
+    "appetite_loss": "吃饭",
+    "functional_impairment": "做事状态",
+    "school_or_study_status": "学习状态",
+    "work_status": "工作状态",
+    "mood_low_or_hopelessness": "心情",
+    "anhedonia_or_interest_loss": "兴趣",
+    "suicide_or_self_harm": "安全感",
+}
+
+
+def matched_slots(interpreter_output: dict[str, Any]) -> list[str]:
+    slots = []
+    for match in interpreter_output.get("target_slots") or []:
+        slot = match.get("slot")
+        if slot and slot not in slots:
+            slots.append(str(slot))
+    target = interpreter_output.get("simulator_internal_target_node")
+    if target and target not in slots:
+        slots.insert(0, str(target))
+    return slots
+
+
+def is_broad_category_choice_question(doctor_question: str, interpreter_output: dict[str, Any]) -> bool:
+    slots = matched_slots(interpreter_output)
+    if len(slots) < 2:
+        return False
+    text = doctor_question or ""
+    if contains_any(text, BROAD_CATEGORY_CHOICE_CUES):
+        return True
+    return contains_any(text, CHOICE_CUES) and len(slots) >= 3
+
+
+def hintable_slots(profile: dict[str, Any], interpreter_output: dict[str, Any], max_slots: int = 2) -> list[str]:
+    profile_slots = profile.get("slot_profiles", {}) or {}
+    selected = []
+    for slot in matched_slots(interpreter_output):
+        if slot_sensitivity(slot) == "high":
+            continue
+        units = selected_profile_units(profile_slots.get(slot) or {}, max_units=1)
+        if units and slot not in selected:
+            selected.append(slot)
+        if len(selected) >= max_slots:
+            break
+    return selected
+
+
+def make_category_hint_response(hinted_slots: list[str]) -> str:
+    labels = [SLOT_DISPLAY_NAMES.get(slot, slot) for slot in hinted_slots[:2]]
+    if not labels:
+        return "可能是日常状态这一块吧，但我现在还不太想说细节。"
+    focus = labels[0] if len(labels) == 1 else "和".join(labels)
+    return f"可能是{focus}这块吧，但我现在还不太想说细节。"
+
+
+def has_specificity_cue(text: str) -> bool:
+    return contains_any(text, SPECIFICITY_CUES) or contains_any(text, REAL_SPECIFICITY_CUES)
+
+
+def has_supportive_cue(text: str) -> bool:
+    return contains_any(text, EMPATHY_OR_PERMISSION_CUES) or contains_any(text, REAL_EMPATHY_OR_PERMISSION_CUES)
+
+
+def has_pressure_cue(text: str) -> bool:
+    benign_boundary = ["先不说", "不用说", "不说细节", "可以不说", "不想说也没关系"]
+    if contains_any(text, REAL_PRESSURE_CUES):
+        return True
+    if contains_any(text, benign_boundary):
+        return False
+    return contains_any(text, PRESSURE_CUES)
+
 
 def stable_unit_float(*parts: Any) -> float:
     text = "::".join(str(part) for part in parts)
@@ -118,6 +340,8 @@ def trait_for_profile(profile_id: str) -> str:
 
 
 def shift_trait_for_severity(trait: str, severity: str) -> str:
+    if severity in {"fully_cooperative", "zero_avoidance"}:
+        return "open"
     if severity == "mild_low_info":
         return {"avoidant": "guarded"}.get(trait, trait)
     if severity == "severe_low_info":
@@ -141,12 +365,12 @@ def doctor_recovery_quality(
     is_generic_clarification: bool,
 ) -> str:
     text = doctor_question or ""
-    if contains_any(text, PRESSURE_CUES):
+    if has_pressure_cue(text):
         return "poor"
     if is_generic_clarification:
         return "poor"
-    specific = contains_any(text, SPECIFICITY_CUES)
-    supportive = contains_any(text, EMPATHY_OR_PERMISSION_CUES)
+    specific = has_specificity_cue(text)
+    supportive = has_supportive_cue(text)
     if is_targeted_followup and specific and supportive:
         return "supportive"
     if is_targeted_followup or specific:
@@ -206,6 +430,22 @@ def response_distribution(
     }
 
 
+def random_disclosure_distribution(base_distribution: dict[str, float], low_disclosure_prob: float) -> dict[str, float]:
+    if set(base_distribution) == {"no_profile_evidence"}:
+        return dict(base_distribution)
+    low_prob = clamp(float(low_disclosure_prob), 0.0, 1.0)
+    low_keys = ["partial_disclosure", "vague_uncertain", "boundary_refusal", "topic_deflection"]
+    low_total = sum(max(0.0, float(base_distribution.get(key, 0.0))) for key in low_keys)
+    if low_total <= 0:
+        low_weights = {"partial_disclosure": 0.45, "vague_uncertain": 0.45, "boundary_refusal": 0.05, "topic_deflection": 0.05}
+    else:
+        low_weights = {key: max(0.0, float(base_distribution.get(key, 0.0))) / low_total for key in low_keys}
+    mixed = {"informative_response": 1.0 - low_prob}
+    for key in low_keys:
+        mixed[key] = low_prob * low_weights[key]
+    return mixed
+
+
 def budget_from_response_type(
     *,
     response_type: str,
@@ -221,6 +461,15 @@ def budget_from_response_type(
             "topic": 0.0,
             "clarity": 0.0,
             "category": "no_profile_evidence",
+        }
+
+    if response_type == "category_hint_no_detail":
+        return {
+            "retain_count": 0,
+            "weaken_count": 0,
+            "topic": 0.70,
+            "clarity": 0.55,
+            "category": "category_hint_no_detail",
         }
 
     if response_type == "informative_response":
@@ -286,6 +535,9 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
     def initial_state() -> dict[str, Any]:
         state = DynamicPatientControllerV1.initial_state()
         state["prior_boundary_refusal_by_slot"] = {}
+        state["soft_asked_count_by_slot"] = {}
+        state["readiness_by_slot"] = {}
+        state["hinted_slots_by_turn"] = []
         return state
 
     def _budget_v2(
@@ -298,6 +550,8 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
         asked_before: int,
         is_targeted_followup: bool,
         is_generic_clarification: bool,
+        is_broad_category_choice: bool,
+        hinted_slots: list[str],
         has_new_units: bool,
         doctor_question: str,
         state: dict[str, Any],
@@ -314,7 +568,15 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
         )
         prior_refusal = bool((state.get("prior_boundary_refusal_by_slot") or {}).get(target_slot))
 
-        if severity == "reference_informative":
+        if (
+            severity == "severe_low_info"
+            and is_broad_category_choice
+            and hinted_slots
+            and has_new_units
+        ):
+            response_type = "category_hint_no_detail"
+            distribution = {"category_hint_no_detail": 1.0}
+        elif severity in {"reference_informative", "fully_cooperative", "zero_avoidance"}:
             response_type = "informative_response"
             distribution = {"informative_response": 1.0}
         else:
@@ -326,6 +588,8 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
                 prior_boundary_refusal=prior_refusal,
                 has_new_units=has_new_units,
             )
+            if severity == "random_disclosure":
+                distribution = random_disclosure_distribution(distribution, self.random_low_disclosure_prob)
             response_type = stable_choice(
                 sorted(distribution.items()),
                 profile_id,
@@ -333,16 +597,20 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
                 target_slot,
                 asked_before,
                 doctor_question,
+                self.random_low_disclosure_prob if severity == "random_disclosure" else "",
                 "response_type",
             )
 
-        budget = budget_from_response_type(
-            response_type=response_type,
-            total_units=total_units,
-            asked_before=asked_before,
-            quality=quality,
-            sensitivity=sensitivity,
-        )
+        if severity in {"fully_cooperative", "zero_avoidance", "random_disclosure"} and response_type == "informative_response":
+            budget = self._fully_cooperative_budget(total_units)
+        else:
+            budget = budget_from_response_type(
+                response_type=response_type,
+                total_units=total_units,
+                asked_before=asked_before,
+                quality=quality,
+                sensitivity=sensitivity,
+            )
         budget.update(
             {
                 "low_info_cause": response_type,
@@ -352,6 +620,11 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
                 "slot_sensitivity": sensitivity,
                 "doctor_recovery_quality": quality,
                 "prior_boundary_refusal": prior_refusal,
+                "disclosure_mode": severity,
+                "random_low_disclosure_prob": self.random_low_disclosure_prob if severity == "random_disclosure" else None,
+                "random_low_disclosure_triggered": (response_type not in {"informative_response", "no_profile_evidence"})
+                if severity == "random_disclosure"
+                else None,
                 "response_type_distribution": {
                     key: round(float(value), 6) for key, value in distribution.items()
                 },
@@ -377,6 +650,9 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
         state.setdefault("last_g_target_by_slot", {})
         state.setdefault("last_cumulative_coverage_by_slot", {})
         state.setdefault("prior_boundary_refusal_by_slot", {})
+        state.setdefault("soft_asked_count_by_slot", {})
+        state.setdefault("readiness_by_slot", {})
+        state.setdefault("hinted_slots_by_turn", [])
 
         severity = normalize_severity(base_severity)
         target_slot, interpreter_output, routing_source = self._route_target(
@@ -403,12 +679,23 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
         units = selected_profile_units(slot_profile, max_units=self.max_units_per_slot)
         total_units = len(units)
         asked_before = int(state["asked_count_by_slot"].get(target_slot, 0))
+        readiness_before = float((state.get("readiness_by_slot") or {}).get(target_slot, 0.0))
         disclosed_before = set(state["disclosed_profile_unit_ids_by_slot"].get(target_slot, []))
         has_new_units = any(unit_profile_id(unit) not in disclosed_before for unit in units)
-        is_targeted_followup = (
-            asked_before > 0
+        broad_category_choice = is_broad_category_choice_question(doctor_question, interpreter_output)
+        hint_slots = hintable_slots(profile, interpreter_output) if broad_category_choice else []
+        hinted_slot_followup = (
+            readiness_before > 0
             and target_slot == state.get("last_target_slot")
-            and contains_any(doctor_question, SPECIFICITY_CUES)
+            and (has_specificity_cue(doctor_question) or has_supportive_cue(doctor_question))
+        )
+        is_targeted_followup = (
+            (
+                asked_before > 0
+                and target_slot == state.get("last_target_slot")
+                and has_specificity_cue(doctor_question)
+            )
+            or hinted_slot_followup
         )
         is_generic_clarification = (
             asked_before > 0
@@ -425,6 +712,8 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
             asked_before=asked_before,
             is_targeted_followup=is_targeted_followup,
             is_generic_clarification=is_generic_clarification,
+            is_broad_category_choice=broad_category_choice,
+            hinted_slots=hint_slots,
             has_new_units=has_new_units,
             doctor_question=doctor_question,
             state=state,
@@ -449,16 +738,47 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
         prev_g = float(state["last_g_target_by_slot"].get(target_slot, 0.0))
         prev_coverage = float(state["last_cumulative_coverage_by_slot"].get(target_slot, 0.0))
 
-        response_text = make_response_text(
-            category=budget["category"],
-            retained_units=retained_units,
-            weakened_units=weakened_units,
-            profile=profile,
-            target_slot=target_slot,
-            max_chars=220,
-        )
+        if budget["response_type"] == "category_hint_no_detail":
+            response_text = make_category_hint_response(hint_slots)
+        else:
+            response_text = make_response_text(
+                category=budget["category"],
+                retained_units=retained_units,
+                weakened_units=weakened_units,
+                profile=profile,
+                target_slot=target_slot,
+                max_chars=220,
+            )
 
-        state["asked_count_by_slot"][target_slot] = asked_before + 1
+        hard_asked_increment = 0 if budget["response_type"] == "category_hint_no_detail" else 1
+        state["asked_count_by_slot"][target_slot] = asked_before + hard_asked_increment
+        if budget["response_type"] == "category_hint_no_detail":
+            for slot in hint_slots:
+                current_soft = int(state["soft_asked_count_by_slot"].get(slot, 0))
+                current_readiness = float(state["readiness_by_slot"].get(slot, 0.0))
+                state["soft_asked_count_by_slot"][slot] = current_soft + 1
+                state["readiness_by_slot"][slot] = round(min(1.0, current_readiness + 0.15), 4)
+                patient_state = state.get("patient_state")
+                if isinstance(patient_state, dict):
+                    slot_map = patient_state.setdefault("slot_disclosure_readiness", {})
+                    current_slot_ready = float(slot_map.get(slot, patient_state.get("engagement", 0.35)))
+                    slot_map[slot] = round(min(1.0, current_slot_ready + 0.15), 4)
+                    patient_state["engagement"] = round(
+                        min(1.0, float(patient_state.get("engagement", 0.35)) + 0.03),
+                        4,
+                    )
+                    patient_state["defensiveness"] = round(
+                        max(0.0, float(patient_state.get("defensiveness", 0.65)) - 0.03),
+                        4,
+                    )
+                    state["patient_state"] = patient_state
+            state["hinted_slots_by_turn"].append(
+                {
+                    "turn_index": int(state.get("turn_index") or 0),
+                    "doctor_question": doctor_question,
+                    "hinted_slots": hint_slots,
+                }
+            )
         state["disclosed_profile_unit_ids_by_slot"][target_slot] = sorted(disclosed_after)
         state["last_target_slot"] = target_slot
         state["last_g_target_by_slot"][target_slot] = g_target
@@ -470,6 +790,12 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
         dynamic_stage = "initial_low_info"
         if severity == "reference_informative":
             dynamic_stage = "reference"
+        elif severity == "zero_avoidance":
+            dynamic_stage = "zero_avoidance_cooperative"
+        elif budget["response_type"] == "category_hint_no_detail":
+            dynamic_stage = "broad_category_hint"
+        elif hinted_slot_followup:
+            dynamic_stage = "hinted_slot_followup"
         elif is_targeted_followup:
             dynamic_stage = "targeted_followup_recovery"
         elif is_generic_clarification:
@@ -489,7 +815,16 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
             "slot_sensitivity": budget["slot_sensitivity"],
             "doctor_recovery_quality": budget["doctor_recovery_quality"],
             "prior_boundary_refusal": budget["prior_boundary_refusal"],
+            "broad_category_choice": broad_category_choice,
+            "hinted_slots": hint_slots if budget["response_type"] == "category_hint_no_detail" else [],
+            "hinted_slot_followup": hinted_slot_followup,
+            "readiness_for_slot_before": readiness_before,
+            "readiness_for_slot_after": float((state.get("readiness_by_slot") or {}).get(target_slot, 0.0)),
             "response_type_distribution": budget["response_type_distribution"],
+            "response_type_distribution_v2_base": budget.get("response_type_distribution_v2_base"),
+            "disclosure_mode": budget.get("disclosure_mode", severity),
+            "random_low_disclosure_prob": budget.get("random_low_disclosure_prob"),
+            "random_low_disclosure_triggered": budget.get("random_low_disclosure_triggered"),
             "controller_version": "dynamic_profile_grounded_controller_v2",
             "profile_id": profile_id,
             "case_id": profile.get("case_id"),
@@ -503,7 +838,8 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
             "routing_source": routing_source,
             "query_interpreter": interpreter_output,
             "asked_count_for_slot_before": asked_before,
-            "asked_count_for_slot_after": asked_before + 1,
+            "asked_count_for_slot_after": asked_before + hard_asked_increment,
+            "soft_asked_count_for_slot_after": int((state.get("soft_asked_count_by_slot") or {}).get(target_slot, 0)),
             "is_targeted_followup": is_targeted_followup,
             "is_generic_clarification": is_generic_clarification,
             "topic_responsiveness": topic,
@@ -543,17 +879,6 @@ class DynamicPatientControllerV2(DynamicPatientControllerV1):
 
 def load_profiles(path: Path) -> dict[str, dict[str, Any]]:
     return {record["profile_id"]: record for record in iter_jsonl(path)}
-
-
-def load_group_records(group_dir: Path, splits: list[str]) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    for split in splits:
-        path = group_dir / f"mdd5k_profile_grounded_environment_{split}_groups.jsonl"
-        for record in iter_jsonl(path):
-            record = dict(record)
-            record["split"] = split
-            records.append(record)
-    return records
 
 
 def build_pilot_records(
@@ -706,6 +1031,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-groups", type=int, default=90)
     parser.add_argument("--max-per-slot", type=int, default=5)
     parser.add_argument("--max-units-per-slot", type=int, default=8)
+    parser.add_argument("--random-low-disclosure-prob", type=float, default=0.5)
+    parser.add_argument("--random-disclosure-seed", type=int, default=0)
     parser.add_argument(
         "--severities",
         nargs="+",
@@ -724,7 +1051,13 @@ def main() -> None:
         max_groups=args.max_groups,
         max_per_slot=args.max_per_slot,
     )
-    controller = DynamicPatientControllerV2(schema=schema, profiles=profiles, max_units_per_slot=args.max_units_per_slot)
+    controller = DynamicPatientControllerV2(
+        schema=schema,
+        profiles=profiles,
+        max_units_per_slot=args.max_units_per_slot,
+        random_low_disclosure_prob=args.random_low_disclosure_prob,
+        random_disclosure_seed=args.random_disclosure_seed,
+    )
     severities = [normalize_severity(level) for level in args.severities]
     records = build_pilot_records(controller, groups, severities)
     summary = summarize(records)
